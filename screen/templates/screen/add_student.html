@@ -1,352 +1,407 @@
 <!DOCTYPE html>
-{% load screen_extras %}
 {% load static %}
-
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme-scope="dashboard">
 <head>
     <meta charset="UTF-8">
-    <title>إضافة طالب</title>
-    <style>
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f6f7;
-            color: #333;
-            direction: rtl;
-        }
-
-        nav {
-            background-color: #008080;
-            padding: 1em;
-            margin-bottom: 2em;
-            display: flex;
-            justify-content: center;
-            gap: 2em;
-        }
-
-        nav a {
-            color: white;
-            font-weight: bold;
-            text-decoration: none;
-            font-size: 1.1em;
-            transition: 0.2s;
-        }
-
-        nav a:hover {
-            color: #e0f7f7;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: auto;
-            background: white;
-            padding: 2em;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-        }
-
-        h2 {
-            color: #006666;
-            text-align: center;
-            margin-bottom: 1em;
-        }
-
-        form {
-            margin-bottom: 1.5em;
-        }
-
-        label {
-            font-weight: bold;
-            display: block;
-            margin-top: 1em;
-        }
-
-        input, select {
-            padding: 0.6em;
-            margin-top: 0.4em;
-            width: 100%;
-            font-size: 1em;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            direction: rtl;
-        }
-
-        button {
-            background-color: #008080;
-            color: white;
-            border: none;
-            padding: 0.6em 1.2em;
-            border-radius: 6px;
-            font-size: 1em;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        button:hover {
-            background-color: #006666;
-        }
-
-        .danger-button {
-            background-color: #c0392b;
-        }
-
-        .danger-button:hover {
-            background-color: #922b21;
-        }
-
-        .rooms-table {
-            display: flex;
-            flex-wrap: nowrap;
-            direction: rtl;
-            justify-content: space-between;
-            width: 100%;
-            overflow-x: auto;
-            padding: 0 1em;
-            box-sizing: border-box;
-        }
-
-        .room-column {
-            flex: 1 1 0;
-            min-width: 140px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 0.5em;
-            background: #f9f9f9;
-            box-sizing: border-box;
-        }
-
-        .room-header {
-            font-weight: bold;
-            font-size: 1.1em;
-            margin-bottom: 0.5em;
-            color: #004d4d;
-            border-bottom: 1px solid #aaa;
-            padding-bottom: 0.4em;
-        }
-
-        .logout-button {
-            color: white;
-            font-weight: bold;
-            font-size: 1.1em;
-            background-color: #008080;
-            border: none;
-        }
-
-        .student-item select {
-            margin-top: 0.4em;
-            width: auto;
-        }
-        
-        /* Style for the up/down arrow buttons */
-        .student-item form {
-            display: inline-block;
-            margin: 0 2px;
-            vertical-align: middle;
-        }
-        
-        .student-item form button {
-            font-size: 0.8em;       /* smaller font size */
-            padding: 2px 4px;       /* minimal padding */
-            line-height: 1;         /* tighten line height */
-            background: none;
-            border: none;
-            cursor: pointer;
-            user-select: none;
-            color: #006666;         /* teal color */
-            transition: color 0.2s ease;
-        }
-        
-        .student-item form button:hover {
-            color: #004d4d;         /* darker teal on hover */
-        }
-        
-        .student-item > div:first-of-type {
-            display: inline-block;
-            vertical-align: middle;
-            margin-left: 6px;
-        }
-        
-        .student-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .delete-button {
-            background-color: #c0392b;
-            border: none;
-            color: white;
-            border-radius: 4px;
-            padding: 4px 8px;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
-
-        .delete-button:hover {
-            background-color: #922b21;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الطلاب</title>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=theme-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body>
+    <div class="app-shell">
+        <header class="app-topbar">
+            <div class="brand">
+                <span class="brand-title">نظام إدارة اختبار الأجزاء</span>
+                <span class="brand-subtitle">إدارة الطلاب واللجان</span>
+            </div>
+            <nav class="nav-actions" aria-label="التنقل الرئيسي">
+                <a class="nav-link" href="{% url 'add_student' %}">إدارة الطلاب</a>
+                <a class="nav-link" href="{% url 'public_screen' %}">الشاشة العامة</a>
+                <a class="nav-link" href="{% url 'edit_settings' %}">الإعدادات</a>
+                <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+                <form class="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-button">تسجيل الخروج</button>
+                </form>
+            </nav>
+        </header>
 
-<nav>
-    <a href="/screen/add-student">إضافة طالب</a>
-    <a href="/screen">عرض الشاشة</a>
-    <a href="{% url 'edit_settings' %}">تعديل الإعدادات</a>
+        <main class="page">
+            <section class="page-header">
+                <div>
+                    <p class="page-kicker">لوحة التشغيل</p>
+                    <h1 class="page-title">إدارة الطلاب واللجان</h1>
+                    <p class="page-note">ابحث عن طالب أو لجنة بسرعة، ثم نفذ النقل وتغيير الحالة من نفس البطاقة.</p>
+                </div>
+                <form method="post" action="{% url 'apply_automatic_status' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="secondary">تحديث التوزيع التلقائي</button>
+                </form>
+            </section>
 
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit" class="logout-button">تسجيل الخروج</button>
-    </form>
-</nav>
+            {% if messages %}
+                <ul class="message-list">
+                    {% for message in messages %}
+                        <li class="message {% if message.tags == 'error' %}error{% endif %}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
 
-<div class="container">
-    {% if messages %}
-    <ul style="list-style: none; padding: 0;">
-        {% for message in messages %}
-            <li style="color: {% if message.tags == 'error' %}red{% else %}green{% endif %};">
-                {{ message }}
-            </li>
-        {% endfor %}
-    </ul>
-    {% endif %}
+            <div class="dashboard-grid">
+                <aside class="stack">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">استيراد الطلاب</h2>
+                        </div>
+                        <div class="panel-body">
+                            <form method="post" action="{% url 'upload_excel' %}" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <div class="field">
+                                    <label for="file">ملف Excel</label>
+                                    <input type="file" id="file" name="file" accept=".xlsx" required>
+                                </div>
+                                <div class="import-mapping-list" id="importMappingList">
+                                    <div class="import-mapping-row" data-mapping-row>
+                                        <div class="field">
+                                            <label>جزء مخصص</label>
+                                            <details class="multi-dropdown" data-multi-dropdown>
+                                                <summary>
+                                                    <span>اختر الأجزاء</span>
+                                                    <span class="multi-dropdown-count" data-selected-count>0</span>
+                                                </summary>
+                                                <div class="multi-dropdown-menu">
+                                                    {% for i in juz_list %}
+                                                        <label class="multi-option">
+                                                            <input type="checkbox" name="mapping_juz_0" value="{{ i }}">
+                                                            <span>{{ i }}</span>
+                                                        </label>
+                                                    {% endfor %}
+                                                </div>
+                                            </details>
+                                        </div>
+                                        <div class="field">
+                                            <label>اللجنة المخصصة</label>
+                                            <details class="multi-dropdown" data-multi-dropdown>
+                                                <summary>
+                                                    <span>اختر اللجان</span>
+                                                    <span class="multi-dropdown-count" data-selected-count>0</span>
+                                                </summary>
+                                                <div class="multi-dropdown-menu">
+                                                    {% for room_num in rooms %}
+                                                        <label class="multi-option">
+                                                            <input type="checkbox" name="mapping_room_0" value="{{ room_num }}">
+                                                            <span>لجنة {{ room_num }}</span>
+                                                        </label>
+                                                    {% endfor %}
+                                                </div>
+                                            </details>
+                                        </div>
+                                        <button class="icon-button import-remove" type="button" data-remove-mapping title="حذف" aria-label="حذف">×</button>
+                                    </div>
+                                </div>
+                                <button class="button secondary import-add" type="button" id="addImportMapping">إضافة تخصيص آخر</button>
+                                <div class="form-actions">
+                                    <button type="submit">رفع وإضافة الطلاب</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
 
-    <h2>إضافة طالب</h2>
-
-    <!-- Upload Excel -->
-    <form method="post" action="{% url 'upload_excel' %}" enctype="multipart/form-data" style="margin-bottom: 2em;">
-        {% csrf_token %}
-        <label for="file">رفع ملف Excel لإضافة طلاب:</label>
-        <input type="file" name="file" accept=".xlsx" required>
-        
-    <label for="juz-select">اختر جزء معين لتعيين لجنة خاصة:</label>
-    <select name="juz_number" id="juz-select">
-        <option value="">تلقائي</option>
-        {% for i in juz_list %}
-            <option value="{{ i }}">{{ i }}</option>
-        {% endfor %}
-    </select>
-    
-    <select name="juz_room" id="room-select">
-        <option value="">تلقائي</option>
-        {% for room_num in rooms %}
-            <option value="{{ room_num }}">{{ room_num }}</option>
-        {% endfor %}
-    </select>
-    
-    
-    
-        <button type="submit">رفع وإضافة الطلاب</button>
-    </form>
-
-    <!-- Export Excel -->
-    <form id="export-form" method="get" action="{% url 'export_students_excel' %}">
-        <label for="institute-select">اختر المعهد للتصدير:</label>
-        <select name="institute" id="institute-select" required>
-            <option value="__all__">جميع المعاهد</option>
-            {% for inst in all_institutes %}
-                <option value="{{ inst }}">{{ inst }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit">تصدير إلى إكسل</button>
-    </form>
-
-    <!-- Add single student -->
-    <form method="post">
-        {% csrf_token %}
-        <div dir="rtl">
-            <label for="id_name">الاسم والكنية:</label>
-            {{ form.name }}
-
-            <label for="id_father_name">اسم الأب:</label>
-            {{ form.father_name }}
-
-            <label for="id_birth_year">سنة التولد:</label>
-            {{ form.birth_year }}
-
-            <label for="id_institute_name">اسم المعهد:</label>
-            {{ form.institute_name }}
-
-            <label for="id_exam_type">غيباً/نظراً:</label>
-            {{ form.exam_type }}
-
-            <label for="id_memorized_parts">الأجزاء المحفوظة:</label>
-            {{ form.memorized_parts }}
-
-            <label for="id_room">اللجنة:</label>
-            {{ form.room }}
-        </div>
-        <button type="submit">إضافة</button>
-    </form>
-
-    <!-- Action Buttons -->
-    <form method="post" action="{% url 'clear_students' %}" style="display:inline; margin-left: 1em;">
-        {% csrf_token %}
-        <button type="submit" onclick="return confirm('هل أنت متأكد أنك تريد مسح جميع الطلاب؟');" class="danger-button">
-            مسح جميع الطلاب
-        </button>
-    </form>
-    <form method="post" action="{% url 'clear_all_results' %}" style="display:inline; margin-left: 1em;">
-        {% csrf_token %}
-        <button type="submit" onclick="return confirm('هل أنت متأكد أنك تريد مسح جميع النتائج؟');" class="danger-button">
-            مسح جميع النتائج
-        </button>
-    </form>
-
-    <form method="post" action="{% url 'apply_automatic_status' %}" style="display:inline; margin-left: 1em;">
-        {% csrf_token %}
-        <button type="submit">التوزيع التلقائي للحالة</button>
-    </form>
-
-    <!-- Student display by room -->
-    <div class="rooms-table">
-        {% for room in rooms %}
-            <div class="room-column">
-                <div class="room-header">لجنة {{ room }}</div>
-                {% with students=students_by_room|get_item:room %}
-                    {% if students %}
-                        {% for student in students %}
-                        <div class="student-item" data-institute-name="{{ student.institute_name }}">
-                            <!-- Up/Down arrows -->
-                                <form method="post" action="{% url 'move_student_position' student.number %}" style="display: inline;">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="direction" value="up">
-                                    <button type="submit" style="background:none; border:none; cursor:pointer;" title="أعلى">🔼</button>
-                                </form>
-                                <form method="post" action="{% url 'move_student_position' student.number %}" style="display: inline;">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="direction" value="down">
-                                    <button type="submit" style="background:none; border:none; cursor:pointer;" title="أسفل">🔽</button>
-                                </form>
-                            <div>{{ student.number }} {{ student.name }}</div>
-                            <div class="student-actions">
-                                <form method="post" action="{% url 'update_student_status' student.number %}">
-                                    {% csrf_token %}
-                                    <select name="status" onchange="this.form.submit()">
-                                        {% for val, label in status_choices %}
-                                            <option value="{{ val }}" {% if student.status == val %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
-                                        <option value="remove">حذف</option>
-                                        {% for room_num in rooms %}
-                                            {% if room_num != student.room %}
-                                                <option value="move:{{ room_num }}">نقل إلى لجنة {{ room_num }}</option>
-                                            {% endif %}
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">تصدير الكشف</h2>
+                        </div>
+                        <div class="panel-body">
+                            <form id="export-form" method="get" action="{% url 'export_students_excel' %}">
+                                <div class="field">
+                                    <label for="institute-select">المعهد</label>
+                                    <select name="institute" id="institute-select" required>
+                                        <option value="__all__">جميع المعاهد</option>
+                                        {% for inst in all_institutes %}
+                                            <option value="{{ inst }}">{{ inst }}</option>
                                         {% endfor %}
                                     </select>
-                                    
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" name="include_grade" value="0" class="secondary">تصدير إلى Excel</button>
+                                    <button type="submit" name="include_grade" value="1" class="secondary">تصدير مع الدرجات</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">إضافة طالب</h2>
+                        </div>
+                        <div class="panel-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                {{ form.non_field_errors }}
+                                <div class="form-grid">
+                                    <div class="field full">
+                                        <label for="id_name">الاسم والكنية</label>
+                                        {{ form.name }}
+                                        {{ form.name.errors }}
+                                    </div>
+                                    <div class="field">
+                                        <label for="id_father_name">اسم الأب</label>
+                                        {{ form.father_name }}
+                                        {{ form.father_name.errors }}
+                                    </div>
+                                    <div class="field">
+                                        <label for="id_birth_year">سنة التولد</label>
+                                        {{ form.birth_year }}
+                                        {{ form.birth_year.errors }}
+                                    </div>
+                                    <div class="field full">
+                                        <label for="id_institute_name">اسم المعهد</label>
+                                        {{ form.institute_name }}
+                                        {{ form.institute_name.errors }}
+                                    </div>
+                                    <div class="field">
+                                        <label for="id_exam_type">نوع الاختبار</label>
+                                        {{ form.exam_type }}
+                                        {{ form.exam_type.errors }}
+                                    </div>
+                                    <div class="field">
+                                        <label for="id_memorized_parts">الأجزاء المحفوظة</label>
+                                        {{ form.memorized_parts }}
+                                        {{ form.memorized_parts.errors }}
+                                    </div>
+                                    <div class="field full">
+                                        <label for="id_room">اللجنة</label>
+                                        {{ form.room }}
+                                        {{ form.room.errors }}
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit">إضافة الطالب</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">إجراءات حساسة</h2>
+                        </div>
+                        <div class="panel-body">
+                            <div class="form-actions">
+                                <form method="post" action="{% url 'clear_students' %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="danger" onclick="return confirm('هل أنت متأكد أنك تريد مسح جميع الطلاب؟');">مسح جميع الطلاب</button>
+                                </form>
+                                <form method="post" action="{% url 'clear_all_results' %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="danger" onclick="return confirm('هل أنت متأكد أنك تريد مسح جميع النتائج؟');">مسح النتائج</button>
                                 </form>
                             </div>
                         </div>
-                        {% endfor %}
-                    {% else %}
-                        <div>لا يوجد طلاب</div>
-                    {% endif %}
-                {% endwith %}
-            </div>
-        {% endfor %}
-    </div>
-</div>
+                    </section>
+                </aside>
 
+                <section class="stack">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">فلترة اللجان</h2>
+                            {% if has_filters %}
+                                <a class="button secondary" href="{% url 'add_student' %}">عرض الكل</a>
+                            {% endif %}
+                        </div>
+                        <div class="panel-body">
+                            <form class="admin-filter-form" method="get">
+                                <div class="field">
+                                    <label for="student-search">بحث بالاسم أو الرقم</label>
+                                    <input id="student-search" type="search" name="q" value="{{ search_query }}" placeholder="مثال: 125 أو اسم الطالب">
+                                </div>
+                                <div class="field">
+                                    <label for="room-filter">اللجنة</label>
+                                    <select id="room-filter" name="room">
+                                        <option value="">كل اللجان</option>
+                                        {% for room_num in rooms %}
+                                            <option value="{{ room_num }}" {% if selected_room == room_num %}selected{% endif %}>لجنة {{ room_num }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="status-filter">الحالة</label>
+                                    <select id="status-filter" name="status">
+                                        <option value="">كل الحالات</option>
+                                        {% for val, label in status_choices %}
+                                            <option value="{{ val }}" {% if selected_status == val %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-actions admin-filter-actions">
+                                    <button type="submit">تطبيق</button>
+                                    <a class="button secondary" href="{% url 'add_student' %}">إلغاء</a>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">ملخص اللجان</h2>
+                        </div>
+                        <div class="panel-body">
+                            <div class="room-summary-grid">
+                                {% for summary in room_summaries %}
+                                    <a class="room-summary-card {% if selected_room == summary.number %}is-selected{% endif %}" href="?room={{ summary.number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">
+                                        <span class="room-summary-title">لجنة {{ summary.number }}</span>
+                                        <span class="room-summary-total">{{ summary.total_count }}</span>
+                                        <span class="room-summary-meta">انتظار {{ summary.waiting_count }}</span>
+                                        <span class="room-summary-meta late">متأخر {{ summary.late_count }}</span>
+                                        {% if summary.current_student %}
+                                            <span class="room-summary-current">{{ summary.current_student.name }}</span>
+                                        {% endif %}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">قوائم اللجان</h2>
+                        </div>
+                        <div class="panel-body">
+                            <div class="admin-room-grid">
+                                {% for room in room_cards %}
+                                    <article class="room-card admin-room-card">
+                                        <header class="room-card-header">
+                                            <span>لجنة {{ room.number }}</span>
+                                            <span class="room-count">{{ room.students|length }} / {{ room.total_count }}</span>
+                                        </header>
+                                        <div class="room-list">
+                                            {% for student in room.students %}
+                                                <div class="student-tile">
+                                                    <div class="student-row">
+                                                        <span class="student-number">{{ student.number }}</span>
+                                                        <span class="student-name">{{ student.name }}</span>
+                                                    </div>
+                                                    <div class="student-row">
+                                                        <span class="status-chip status-{{ student.status }}">{{ student.get_status_display }}</span>
+                                                        <div class="move-actions">
+                                                            <form method="post" action="{% url 'move_student_position' student.number %}">
+                                                                {% csrf_token %}
+                                                                <input type="hidden" name="direction" value="up">
+                                                                <button class="icon-button" type="submit" title="أعلى" aria-label="رفع الطالب">↑</button>
+                                                            </form>
+                                                            <form method="post" action="{% url 'move_student_position' student.number %}">
+                                                                {% csrf_token %}
+                                                                <input type="hidden" name="direction" value="down">
+                                                                <button class="icon-button" type="submit" title="أسفل" aria-label="خفض الطالب">↓</button>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                    <form method="post" action="{% url 'update_student_status' student.number %}">
+                                                        {% csrf_token %}
+                                                        <select class="student-status-select" name="status" onchange="this.form.submit()">
+                                                            {% for val, label in status_choices %}
+                                                                <option value="{{ val }}" {% if student.status == val %}selected{% endif %}>{{ label }}</option>
+                                                            {% endfor %}
+                                                            <option value="remove">حذف</option>
+                                                            {% for room_num in rooms %}
+                                                                {% if room_num != student.room_number %}
+                                                                    <option value="move:{{ room_num }}">نقل إلى لجنة {{ room_num }}</option>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </select>
+                                                    </form>
+                                                </div>
+                                            {% empty %}
+                                                <div class="empty-state">لا توجد نتائج ضمن هذه الفلترة</div>
+                                            {% endfor %}
+                                        </div>
+                                    </article>
+                                {% empty %}
+                                    <div class="empty-state">لا توجد نتائج مطابقة.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </section>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script>
+        (function () {
+            const list = document.getElementById('importMappingList');
+            const addButton = document.getElementById('addImportMapping');
+            if (!list || !addButton) return;
+
+            let nextIndex = list.querySelectorAll('[data-mapping-row]').length;
+
+            function refreshDropdown(dropdown) {
+                const count = dropdown.querySelectorAll('input[type="checkbox"]:checked').length;
+                const countEl = dropdown.querySelector('[data-selected-count]');
+                if (countEl) countEl.textContent = String(count);
+            }
+
+            function refreshAllDropdowns() {
+                list.querySelectorAll('[data-multi-dropdown]').forEach(refreshDropdown);
+            }
+
+            function refreshRemoveButtons() {
+                const rows = list.querySelectorAll('[data-mapping-row]');
+                rows.forEach(function (row) {
+                    const removeButton = row.querySelector('[data-remove-mapping]');
+                    if (removeButton) removeButton.disabled = rows.length === 1;
+                });
+            }
+
+            addButton.addEventListener('click', function () {
+                const firstRow = list.querySelector('[data-mapping-row]');
+                if (!firstRow) return;
+
+                const row = firstRow.cloneNode(true);
+                row.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+                    input.name = input.name.replace(/\d+$/, String(nextIndex));
+                    input.checked = false;
+                });
+                row.querySelectorAll('[data-multi-dropdown]').forEach(function (dropdown) {
+                    dropdown.open = false;
+                    refreshDropdown(dropdown);
+                });
+                nextIndex += 1;
+                list.appendChild(row);
+                refreshRemoveButtons();
+            });
+
+            list.addEventListener('click', function (event) {
+                const removeButton = event.target.closest('[data-remove-mapping]');
+                if (!removeButton) return;
+
+                const rows = list.querySelectorAll('[data-mapping-row]');
+                if (rows.length <= 1) return;
+
+                removeButton.closest('[data-mapping-row]').remove();
+                refreshRemoveButtons();
+            });
+
+            list.addEventListener('change', function (event) {
+                const input = event.target.closest('input[type="checkbox"]');
+                if (!input) return;
+
+                const dropdown = input.closest('[data-multi-dropdown]');
+                if (dropdown) refreshDropdown(dropdown);
+            });
+
+            document.addEventListener('click', function (event) {
+                if (event.target.closest('[data-multi-dropdown]')) return;
+
+                list.querySelectorAll('[data-multi-dropdown][open]').forEach(function (dropdown) {
+                    dropdown.open = false;
+                });
+            });
+
+            refreshRemoveButtons();
+            refreshAllDropdowns();
+        })();
+    </script>
 </body>
 </html>

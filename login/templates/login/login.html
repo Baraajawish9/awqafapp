@@ -1,97 +1,52 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme-scope="dashboard">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تسجيل الدخول</title>
-    <style>
-        body {
-            background: #f0f2f5;
-            font-family: Arial, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-            direction: rtl;
-        }
-
-        h2 {
-            text-align: center;
-            margin-bottom: 1.5rem;
-            color: #333;
-        }
-
-        form {
-            display: flex;
-            flex-direction: column;
-        }
-
-        label {
-            margin-bottom: 0.4rem;
-            font-weight: bold;
-            color: #555;
-        }
-
-        input[type="text"],
-        input[type="password"] {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-            text-align: right;
-        }
-
-        button {
-            padding: 10px;
-            background-color: #009688;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        button:hover {
-            background-color: #00796b;
-        }
-
-        .error {
-            color: red;
-            text-align: center;
-            margin-bottom: 1rem;
-            font-weight: bold;
-        }
-    </style>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=theme-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body>
-    <div class="login-container" role="main">
-        <h2>تسجيل الدخول</h2>
+    <main class="login-page">
+        <section class="login-card" role="main">
+            <div class="brand">
+                <span class="brand-title">نظام إدارة اختبار الأجزاء</span>
+                <span class="brand-subtitle">وزارة الأوقاف</span>
+            </div>
 
-        {% if error %}
-            <div class="error" role="alert">{{ error }}</div>
-        {% endif %}
+            <h1 class="login-title">تسجيل الدخول</h1>
+            <p class="login-copy">ادخل باسم مستخدم اللجنة أو حساب الإدارة للمتابعة.</p>
 
-        <form method="post" novalidate>
-            {% csrf_token %}
-            <label for="room_name">اسم المستخدم:</label>
-            <input type="text" id="room_name" name="room_name"  required autofocus autocomplete="username" />
+            {% if messages %}
+                <ul class="message-list">
+                    {% for message in messages %}
+                        <li class="message {% if message.tags == 'error' %}error{% endif %}" role="alert">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
 
-            <label for="password">كلمة المرور:</label>
-            <input type="password" id="password" name="password" required autocomplete="current-password" />
+            {% if error %}
+                <div class="message error" role="alert">{{ error }}</div>
+            {% endif %}
 
-            <button type="submit" aria-label="تسجيل الدخول">تسجيل الدخول</button>
-        </form>
-    </div>
+            <form method="post" novalidate>
+                {% csrf_token %}
+                <div class="field">
+                    <label for="room_name">اسم المستخدم</label>
+                    <input type="text" id="room_name" name="room_name" required autofocus autocomplete="username">
+                </div>
+                <div class="field">
+                    <label for="password">كلمة المرور</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <div class="form-actions">
+                    <button type="submit">دخول</button>
+                </div>
+            </form>
+        </section>
+    </main>
 </body>
 </html>

@@ -9,7 +9,7 @@ class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
         fields = [
-            'name', 'father_name', 'birth_year',  # 👈 changed from birth_date to birth_year
+            'name', 'father_name', 'birth_year',  # 👈 changed from birth_dte to birth_year
             'institute_name', 'exam_type', 'memorized_parts', 'room'
         ]
         labels = {
@@ -25,6 +25,7 @@ class StudentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         room_count = ScreenSettings.get_room_count()
+        self.fields['room'].required = False
         self.fields['room'].widget = forms.Select(
             choices=[('', 'اختيار لجنة تلقائي')] + [(i, f'اللجنة {i}') for i in range(1, room_count + 1)]
         )
@@ -35,6 +36,12 @@ class StudentForm(forms.ModelForm):
 
 
 class ScreenSettingsForm(forms.ModelForm):
+    public_screen_mode = forms.ChoiceField(
+        label="وضع الشاشة العامة",
+        choices=ScreenSettings.SCREEN_MODE_CHOICES,
+        widget=forms.Select,
+        required=True,
+    )
     exam_start_time = forms.TimeField(
         label="وقت بدء الامتحان",
         widget=forms.TimeInput(format='%H:%M', attrs={'type': 'time'}),
@@ -43,12 +50,13 @@ class ScreenSettingsForm(forms.ModelForm):
 
     class Meta:
         model = ScreenSettings
-        fields = ['room_count', 'waiting_count', 'estimate_time_per_student', 'exam_start_time']
+        fields = ['room_count', 'waiting_count', 'estimate_time_per_student', 'exam_start_time', 'public_screen_mode']
         labels = {
             'room_count': 'عدد اللجان',
             'waiting_count': 'عدد الطلاب في الانتظار',
             'estimate_time_per_student': 'المدة التقديرية لكل طالب (دقيقة)',
             'exam_start_time': 'وقت بدء الامتحان',
+            'public_screen_mode': 'وضع الشاشة العامة',
         }
 
 

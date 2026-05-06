@@ -1,114 +1,35 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme-scope="dashboard">
 <head>
     <meta charset="UTF-8">
-    <title>لوحة إدارة الأوقاف</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f4f6f9;
-            color: #333;
-            direction: rtl;
-        }
-
-        header {
-            background-color: #006d77;
-            padding: 15px 25px;
-            color: white;
-        }
-
-        nav {
-            background-color: #005a63;
-            padding: 10px 25px;
-            display: flex;
-            gap: 20px;
-        }
-
-        nav a {
-            color: #e0f7f7;
-            text-decoration: none;
-            font-weight: bold;
-            transition: color 0.2s;
-        }
-
-        nav a:hover {
-            color: #83c5be;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 30px auto;
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-
-        h1, h2 {
-            margin-top: 0;
-            color: #006d77;
-        }
-
-        button, input[type="submit"] {
-            background-color: #006d77;
-            color: white;
-            padding: 10px 18px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 15px;
-            transition: background-color 0.2s;
-        }
-
-        button:hover, input[type="submit"]:hover {
-            background-color: #005a63;
-        }
-
-        form input, form select {
-            width: 100%;
-            padding: 10px;
-            margin: 8px 0 16px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-
-        table th, table td {
-            padding: 12px;
-            text-align: center;
-            border-bottom: 1px solid #eee;
-        }
-
-        table th {
-            background-color: #e0f7f7;
-        }
-
-    </style>
+    <title>{% block title %}لوحة إدارة الأوقاف{% endblock %}</title>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=theme-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body>
+    <div class="app-shell">
+        <header class="app-topbar">
+            <div class="brand">
+                <span class="brand-title">نظام إدارة اختبار الأجزاء</span>
+                <span class="brand-subtitle">وزارة الأوقاف</span>
+            </div>
+            <nav class="nav-actions" aria-label="التنقل الرئيسي">
+                <a class="nav-link" href="{% url 'add_student' %}">إدارة الطلاب</a>
+                <a class="nav-link" href="{% url 'public_screen' %}">الشاشة العامة</a>
+                <a class="nav-link" href="{% url 'edit_settings' %}">الإعدادات</a>
+                <form class="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-button">تسجيل الخروج</button>
+                </form>
+            </nav>
+        </header>
 
-<header>
-    <h1>نظام إدارة الطلاب - الأوقاف</h1>
-</header>
-
-
-
-<div class="container">
-    {% block content %}
-    {% endblock %}
-</div>
-
+        <main class="page">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
 </body>
 </html>

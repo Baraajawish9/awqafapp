@@ -15,9 +15,15 @@ import re
 def home_view(request):
     user = request.user
     if user.is_staff or user.is_superuser:
-        return redirect('/screen/add-student/')
-    else:
-        return redirect(f'/mobileapp/room/{user.username}/')
+        return redirect('add_student')
+
+    match = re.fullmatch(r'room(\d+)-([12])', user.username.lower())
+    if match:
+        room_num, subroom_num = match.groups()
+        return redirect('room_view', room_name=f'room{room_num}', subroom=int(subroom_num))
+
+    logout(request)
+    return redirect('/')
 
 def mobile_login(request):
     if request.user.is_authenticated:
@@ -25,13 +31,23 @@ def mobile_login(request):
 
 
         if user.is_staff or user.is_superuser:
-            return redirect('/screen/add-student/')
-        else:
-            return redirect(f'/mobileapp/room/{user.username}/')
+            return redirect('add_student')
+
+        match = re.fullmatch(r'room(\d+)-([12])', user.username.lower())
+        if match:
+            room_num, subroom_num = match.groups()
+            return redirect('room_view', room_name=f'room{room_num}', subroom=int(subroom_num))
+
+        logout(request)
+        return redirect('/')
 
     if request.method == 'POST':
         room_name = request.POST.get('room_name', '').strip().lower()
         password = request.POST.get('password', '')
+
+        if room_name.startswith('room') and not re.fullmatch(r'room\d+-[12]', room_name):
+            messages.error(request, 'اسم مستخدم اللجنة يجب أن يكون مثل room1-1 أو room1-2')
+            return render(request, 'login/login.html')
 
         user = authenticate(request, username=room_name, password=password)
         if user is not None:
@@ -40,9 +56,15 @@ def mobile_login(request):
 
 
             if user.is_staff or user.is_superuser:
-                return redirect('/screen/add-student/')
-            else:
-                return redirect(f'/mobileapp/room/{room_name}/')
+                return redirect('add_student')
+
+            match = re.fullmatch(r'room(\d+)-([12])', room_name)
+            if match:
+                room_num, subroom_num = match.groups()
+                return redirect('room_view', room_name=f'room{room_num}', subroom=int(subroom_num))
+
+            logout(request)
+            messages.error(request, 'اسم مستخدم اللجنة يجب أن يكون مثل room1-1 أو room1-2')
         else:
             messages.error(request, 'اسم المستخدم أو كلمة المرور غير صحيحة')
 
@@ -57,20 +79,28 @@ def mobile_logout(request):
 
 @login_required
 def room_view(request, room_name, subroom):
-    # Parse room number from room_name like 'room1'
     match = re.match(r'room(\d+)', room_name)
     if not match:
         return HttpResponse("Invalid room name", status=400)
 
     room_number = int(match.group(1))
 
-    students = Student.objects.filter(room=room_number, subroom=subroom).order_by('position')
+    try:
+        subroom_int = int(subroom)
+    except ValueError:
+        return HttpResponse("Invalid subroom number", status=400)
+
+    if subroom_int not in (1, 2):
+        return HttpResponse("Invalid subroom number", status=400)
+
+    students = Student.objects.filter(room__in=[str(room_number), f'room{room_number}']).exclude(status='finished').order_by('position', 'number')
 
     return render(request, 'mobileapp/room_view.html', {
         'students': students,
         'room': room_number,
-        'subroom': subroom,
+        'subroom': subroom_int,
     })
+
 
 @staff_member_required(login_url='')
 def add_student_view(request):
@@ -88,11 +118,11 @@ def custom_login_view(request):
             login(request, user)
 
             # Parse username 'roomX-Y'
-            match = re.match(r'room(\d+)-(\d+)', username)
+            match = re.fullmatch(r'room(\d+)-([12])', username)
             if match:
                 room_num = match.group(1)
                 subroom_num = match.group(2)
-                return redirect(f'/mobileapp/room/room{room_num}-{subroom_num}/')
+                return redirect('room_view', room_name=f'room{room_num}', subroom=int(subroom_num))
             
             # fallback redirect
             return redirect('/')

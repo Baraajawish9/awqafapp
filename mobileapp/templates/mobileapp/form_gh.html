@@ -1,47 +1,49 @@
-<form method="post" action="{% url 'submit_grade' student.number subroom %}">
+<form class="grade-form" method="post" action="{% url 'submit_grade' student.number subroom %}">
     {% csrf_token %}
 
-    <table>
-        <thead>
-            <tr>
-                <th rowspan="2">السؤال</th>
-                <th colspan="2">خطأ الحفظ</th>
-                <th colspan="2">خطأ التشكيل</th>
-                <th colspan="2">الوقف والابتداء</th>
-            </tr>
-            <tr>
-                <th>نبه وصحح بنفسه (-2)</th>
-                <th>نبه وصحح له (-4)</th>
-                <th>نبه وصحح بنفسه (-4)</th>
-                <th>نبه وصحح له (-8)</th>
-                <th>قبيح (-2)</th>
-                <th>خاطئ (-1)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for question in questions %}
-            <tr>
-                <th>السؤال {{ question }}</th>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="الحفظ" data-value="2">نبه وصحح بنفسه (-2)</span></td>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="الحفظ" data-value="4">نبه وصحح له (-4)</span></td>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="التشكيل" data-value="4">نبه وصحح بنفسه (-4)</span></td>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="التشكيل" data-value="8">نبه وصحح له (-8)</span></td>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="الوقف" data-value="2">قبيح (-2)</span></td>
-                <td><span class="mistake-label" data-question="{{ question }}" data-category="الوقف" data-value="1">خاطئ (-1)</span></td>
-            </tr>
-            <tr>
-                <td colspan="7">
-                    <div class="mistakes-container" id="mistakes-{{ question }}"></div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="student-table-wrap">
+        <table class="grading-table">
+            <thead>
+                <tr>
+                    <th rowspan="2">السؤال</th>
+                    <th colspan="2">خطأ الحفظ</th>
+                    <th colspan="2">خطأ التشكيل</th>
+                    <th colspan="2">الوقف والابتداء</th>
+                </tr>
+                <tr>
+                    <th>نبه وصحح بنفسه (-2)</th>
+                    <th>نبه وصحح له (-4)</th>
+                    <th>نبه وصحح بنفسه (-4)</th>
+                    <th>نبه وصحح له (-8)</th>
+                    <th>قبيح (-2)</th>
+                    <th>خاطئ (-1)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for question in questions %}
+                    <tr>
+                        <th>السؤال {{ question }}</th>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="الحفظ" data-value="2">نبه وصحح بنفسه (-2)</span></td>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="الحفظ" data-value="4">نبه وصحح له (-4)</span></td>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="التشكيل" data-value="4">نبه وصحح بنفسه (-4)</span></td>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="التشكيل" data-value="8">نبه وصحح له (-8)</span></td>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="الوقف" data-value="2">قبيح (-2)</span></td>
+                        <td><span class="mistake-label" data-question="{{ question }}" data-category="الوقف" data-value="1">خاطئ (-1)</span></td>
+                    </tr>
+                    <tr>
+                        <td colspan="7">
+                            <div class="mistakes-container" id="mistakes-{{ question }}"></div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
     <input type="hidden" name="mistakes_json" id="mistakes_json" value="{}">
     <input type="hidden" name="final_grade" id="final_grade" value="100">
 
-    <div style="text-align:center; margin-top:20px;">
+    <div class="form-actions">
         <button type="submit">إرسال التقييم</button>
     </div>
 </form>

@@ -6,9 +6,10 @@ from .forms import RoomLoginForm, MarkForm
 import csv
 import os
 import re
+from django.contrib.auth.models import User
 from django.http import HttpResponse
 from django.conf import settings
-from screen.views import apply_automatic_status
+from screen.views import apply_automatic_status, get_current_student_for_room
 from django.shortcuts import redirect
 from django.contrib import messages
 from screen.models import ExamResult
@@ -19,21 +20,24 @@ from screen.models import Student
 
 @login_required
 def room_view(request, room_name, subroom):
-    # Get numeric room number from room_name like "room1"
     match = re.match(r'room(\d+)', room_name)
     if not match:
         return HttpResponse("Invalid room name", status=400)
-    
-    room_number = int(match.group(1))
-    students = Student.objects.filter(room=room_number).exclude(status='finished').order_by('position')
 
+    room_number = match.group(1)  # '7' from 'room7'
+    if subroom not in (1, 2):
+        return HttpResponse("Invalid subroom number", status=400)
+
+    room_values = [room_number, f'room{room_number}']
+    students = Student.objects.filter(room__in=room_values).exclude(status="finished").order_by('position', 'number')
 
     return render(request, 'mobileapp/room_view.html', {
+        'students': students,
         'room_name': room_name,
         'room_number': room_number,
         'subroom': subroom,
-        'students': students,
     })
+
 
 
 
@@ -43,37 +47,46 @@ def room_view(request, room_name, subroom):
 @login_required
 def mobile_redirect_view(request):
     username = request.user.username.lower()
-    if username.startswith("room"):
-        return redirect(f'/mobileapp/room/{username}/')
+    match = re.fullmatch(r'room(\d+)-([12])', username)
+    if match:
+        room_number, subroom = match.groups()
+        return redirect('room_view', room_name=f'room{room_number}', subroom=int(subroom))
+    elif username.startswith("room"):
+        return redirect('/')
     else:
-        return redirect('/screen/add-student')
-
-
+        return redirect('add_student')
 
 @login_required
-def mark_student_view(request, student_number, subroom):
-    student = get_object_or_404(Student, number=student_number)
+def mark_student_view(request, room_name, student_number, subroom):
+    match = re.match(r'room(\d+)', room_name)
+    if not match:
+        return HttpResponse("Invalid room name", status=400)
+    if subroom not in (1, 2):
+        return HttpResponse("Invalid subroom number", status=400)
 
-    # Get all grades for this student so far
-    subroom_results = ExamResult.objects.filter(number=student.number).exclude(sub_room=0)  # exclude final average
+    room_number = match.group(1)
+    student = get_object_or_404(Student, number=student_number, room__in=[room_number, f'room{room_number}'])
+    current_student = get_current_student_for_room(room_number)
+    if not current_student or current_student.number != student.number:
+        return redirect('room_view', room_name=room_name, subroom=subroom)
+
+    subroom_results = ExamResult.objects.filter(number=student.number, sub_room__in=['1', '2'])
     grades = [er.grade for er in subroom_results]
+    avg_grade = sum(grades) / len(grades) if grades else 100
 
-    # Calculate current average grade
-    avg_grade = sum(grades)/len(grades) if grades else 100
-
-    # Determine exam questions based on exam type
     if student.exam_type in ["غيبا", "gh"]:
-        questions = ['الأول', 'الثاني', 'الثالث']  # 3 questions
+        questions = ['الأول', 'الثاني', 'الثالث']
     else:
-        questions = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس']  # 5 questions
+        questions = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس']
 
-    # Render grading page with current average grade shown
     return render(request, 'mobileapp/mark_student.html', {
         'student': student,
         'subroom': subroom,
+        'room_name': f'room{student.room}',
         'avg_grade': avg_grade,
         'questions': questions,
     })
+
 
 
 def some_view(request):
@@ -89,5 +102,15 @@ def some_view(request):
     return redirect('room_view', room_name=room_name, subroom=subroom)
 @login_required
 def room_redirect_default(request, room_name):
-    # Redirect to subroom 1 by default if subroom is missing
-    return redirect('room_view', room_name=room_name, subroom=1)
+    username = request.user.username.lower()
+    match = re.fullmatch(r'room(\d+)-([12])', username)
+    if match:
+        room_number, subroom = match.groups()
+        return redirect('room_view', room_name=f'room{room_number}', subroom=int(subroom))
+    return HttpResponse("Room login must use roomX-1 or roomX-2", status=403)
+
+
+@login_required
+def mark_student_late(request, room_name, student_number, subroom):
+    return HttpResponse("Marking students late is only available from the dashboard.", status=403)
+

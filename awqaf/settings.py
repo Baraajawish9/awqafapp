@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-)#5mfuu_kod19mg!5rw9!&syw0six*4d31%kpswi8go#u!gy_@
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['192.168.1.104' , '127.0.0.1']
+ALLOWED_HOSTS = ['192.168.1.101' , '127.0.0.1','localhost']
 
 
 # Application definition
@@ -112,7 +112,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Damascus'
 
 USE_I18N = True
 
@@ -129,4 +129,4 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-LOGIN_REDIRECT_URL = '/mobileapp/redirect-after-login/'
+LOGIN_REDIRECT_URL = '/rooms/redirect-after-login/'

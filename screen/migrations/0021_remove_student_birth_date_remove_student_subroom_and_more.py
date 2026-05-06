@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RemoveField(
             model_name='student',
-            name='birth_date',
+            name='birth_year',
         ),
         migrations.RemoveField(
             model_name='student',

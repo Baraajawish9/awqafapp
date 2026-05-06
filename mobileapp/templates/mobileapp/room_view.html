@@ -1,41 +1,65 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-{% load mobileapp_extras %}
+<html lang="ar" dir="rtl" data-theme-scope="quizzer-{{ room_name }}-{{ subroom }}">
 <head>
     <meta charset="UTF-8">
-    <title>الطلاب في {{ room_name|replace:"room,اللجنة " }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: sans-serif; padding: 1em; background-color: #f0f0f0; }
-        h2 { color: teal; text-align: center; }
-        .student { background: white; padding: 1em; margin-bottom: 1em; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-    </style>
-    <script>
-        setTimeout(() => location.reload(), 10000);  // Refresh every 10 seconds
-    </script>
+    <title>طلاب اللجنة {{ room_number }}</title>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=theme-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body>
-    <nav>    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit" class="logout-button">تسجيل الخروج</button>
-    </form>
-</nav>
+    <main class="mobile-page">
+        <header class="mobile-header">
+            <div>
+                <p class="page-kicker">فرع اللجنة {{ subroom }}</p>
+                <h1 class="page-title">لجنة {{ room_number }}</h1>
+                <p class="page-note">يظهر رابط التقييم عند الطالب الجاري اختباره أو الطالب المتأخر.</p>
+            </div>
+            <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+            <form class="logout-form" method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="secondary">تسجيل الخروج</button>
+            </form>
+        </header>
 
+        {% if messages %}
+            <ul class="message-list">
+                {% for message in messages %}
+                    <li class="message {% if message.tags == 'error' %}error{% endif %}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
 
-    <h2>الطلاب في اللجنة {{ room_number }}</h2>
-    {% for student in students %}
-        <div class="student">
-            <strong>{{ student.number }}</strong> -
-            <a href="{% url 'mark_student' student.number subroom %}">{{ student.name }}</a>
+        <section class="queue-list">
+            {% for student in students %}
+                <article class="queue-item {% if student.status == 'in_exam' %}is-actionable{% endif %}">
+                    <div class="student-row">
+                        <span class="student-number">{{ student.number }}</span>
+                        <span class="status-chip status-{{ student.status }}">{{ student.get_status_display }}</span>
+                    </div>
+                    <h2 class="panel-title">
+                        {% if student.status == 'in_exam' %}
+                            <a class="queue-link" href="{% url 'mark_student_view' room_name=room_name subroom=subroom student_number=student.number %}">{{ student.name }}</a>
+                        {% else %}
+                            {{ student.name }}
+                        {% endif %}
+                    </h2>
+                    {% if student.institute_name %}
+                        <p class="page-note">{{ student.institute_name }}</p>
+                    {% endif %}
+                </article>
+            {% empty %}
+                <div class="empty-state">لا يوجد طلاب في هذه اللجنة.</div>
+            {% endfor %}
+        </section>
+    </main>
 
-
-            - <span style="color: {% if student.status == 'in_exam' %}green{% elif student.status == 'waiting' %}orange{% else %}gray{% endif %};">
-                {{ student.get_status_display }}
-              </span>
-        </div>
-    {% empty %}
-        <p>لا يوجد طلاب في هذه اللجنة.</p>
-    {% endfor %}
-    
+    <script>
+        setTimeout(function () {
+            location.reload();
+        }, 5000);
+    </script>
 </body>
 </html>

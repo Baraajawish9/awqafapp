@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='student',
-            name='birth_date',
+            name='birth_year',
             field=models.DateField(blank=True, null=True, verbose_name='تاريخ الولادة'),
         ),
         migrations.AddField(

@@ -43,7 +43,8 @@ STATUS_CHOICES = [
     ('waiting', 'ينتظر'),
     ('in_exam', 'في السبر'),
     ('on_waiting_list', 'قائمة الانتظار'),
-    ('finished', 'تم الانتهاء'), 
+    ('finished', 'تم الانتهاء'),
+    ('late','متأخر') 
 ]
 
 
@@ -64,10 +65,11 @@ class Student(models.Model):
     grade = models.FloatField(null=True, blank=True)
     mistakes_json = models.TextField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
+    subroom = models.IntegerField(default=1)
 
 
 
-    room = models.IntegerField(blank=True, null=True)
+    room = models.CharField(max_length=50, default="room1")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
 
 
@@ -88,10 +90,16 @@ class Student(models.Model):
 from django.db import models
 
 class ScreenSettings(models.Model):
+    SCREEN_MODE_CHOICES = [
+        ('rooms', 'عرض اللجان الحالي'),
+        ('window', 'عرض فترة 15 دقيقة'),
+    ]
+
     room_count = models.IntegerField(default=5)
     waiting_count = models.IntegerField(default=5)
     estimate_time_per_student = models.IntegerField(default=5)  # <--- ADD THIS
     exam_start_time = models.TimeField(default="07:00")  # default 7 AM
+    public_screen_mode = models.CharField(max_length=20, choices=SCREEN_MODE_CHOICES, default='rooms')
 
     @classmethod
     def get_settings(cls):
@@ -115,7 +123,7 @@ class ScreenSettings(models.Model):
 class ExamResult(models.Model):
     number = models.IntegerField()
     name = models.CharField(max_length=200)
-    grade = models.IntegerField()
+    grade = models.FloatField()
     result = models.CharField(max_length=50)
     room = models.IntegerField()
     timestamp = models.DateTimeField(auto_now_add=True)

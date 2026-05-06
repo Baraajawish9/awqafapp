@@ -1,259 +1,381 @@
 {% load screen_extras %}
+{% load static %}
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme-scope="public-screen">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>الشاشة العامة</title>
-    <style>
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0; padding: 0;
-            background-color: #f4f6f7;
-            color: #333;
-        }
-        .rooms-table {
-            white-space: nowrap;
-            overflow-x: auto;
-            width: 100vw;
-        }
-        
-
-        .room-column {
-            max-height: 85vh;
-            overflow-y: auto;
-            display: inline-block;
-            vertical-align: top;
-            width: 280px;
-            margin-left: 10px;
-        }
-        
-
-        .room-header {
-            font-weight: bold;
-            font-size: 1.1em;
-            margin-bottom: 0.5em;
-            color: #004d4d;
-            border-bottom: 1px solid #aaa;
-            padding-bottom: 0.4em;
-            text-align: right;
-        }
-
-        .student-item {
-            background-color: #ffffff;
-            padding: 0.4em 0.6em;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            gap: 0.5em;
-            direction: rtl;
-            margin-bottom: 0.4em;
-        }
-
-        .student-item .info {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            flex-grow: 1;
-        }
-
-        .student-item .status {
-            font-size: 0.9em;
-            padding: 2px 6px;
-            border-radius: 4px;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-    </style>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=rooms-5">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
-<body>
-    <div class="rooms-table" id="roomsTable">
-        {% for room in rooms %}
-            <div class="room-column">
-                <div class="room-header">لجنة {{ room }}</div>
-                {% with students=students_by_room|dict_get:room %}
-                    {% if students %}
-                        {% for student in students %}
-                        <div class="student-item"
-                             style="
-                                {% if student.status == 'in_exam' %}
-                                    background-color: #2ecc71;
-                                    color: white;
-                                {% elif student.status == 'waiting' %}
-                                    background-color: #f1c40f;
-                                    color: black;
-                                {% elif student.status == 'on_waiting_list' %}
-                                    background-color: #e67e22;
-                                    color: white;
-                                {% else %}
-                                    background-color: #bdc3c7;
-                                    color: black;
-                                {% endif %}
-                                padding: 0.4em 0.6em;
-                                border-radius: 6px;
-                                margin-bottom: 0.4em;
-                                white-space: nowrap;
-                                overflow: hidden;
-                                text-overflow: ellipsis;
-                             ">
-                            <div style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                {{ student.number }} - {{ student.name }}
-                                {% if student.latest_grade %}
-                                    | : {{ student.latest_grade }} - {{ student.latest_result }}
-                                {% elif student.status in 'waiting,on_waiting_list' and student_wait_times %}
-                                    | {{ student_wait_times|dict_get:student.number }}
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div>لا يوجد طلاب</div>
-                    {% endif %}
-                {% endwith %}
+<body class="tv-body">
+    {% if screen_mode == 'window' %}
+    <main class="tv-stage tv-window-stage {{ tv_density_class }}" data-refresh-ms="{{ schedule_refresh_ms }}">
+        <header class="tv-topline">
+            <div>
+                <span class="tv-kicker">الشاشة العامة</span>
+                <h1>طلاب الفترة الحالية</h1>
             </div>
-        {% endfor %}
-    </div>
-    
+            <div class="tv-page-indicator tv-window-indicator">
+                <span>{{ schedule_window_start }}</span>
+                <span>-</span>
+                <span>{{ schedule_window_end }}</span>
+            </div>
+            <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+        </header>
+
+        <section class="tv-window-board tv-window-board-strong">
+            <div class="tv-window-board-header">
+                <span>الوقت</span>
+                <span>الطالب</span>
+                <span>اللجنة</span>
+                <span>الحالة</span>
+            </div>
+            <div class="tv-window-board-list" id="tvWindowBoardList">
+                <div class="tv-window-board-track" id="tvWindowBoardTrack">
+            {% for student in schedule_students %}
+                <article class="tv-window-board-row tv-window-board-row-strong status-{{ student.status }}">
+                    <span class="tv-window-board-time">{{ student.scheduled_time }}</span>
+                    <span class="tv-window-board-name">
+                        <span class="tv-window-board-number">{{ student.number }}</span>
+                        <span>{{ student.name }}</span>
+                    </span>
+                    <span class="tv-window-board-room">لجنة {{ student.room_number }}</span>
+                    <span class="tv-window-board-status">{{ student.get_status_display }}</span>
+                </article>
+            {% empty %}
+                <div class="tv-window-empty">لا يوجد طلاب ضمن الفترة الحالية</div>
+            {% endfor %}
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="tv-legend" aria-label="دليل الحالات">
+        <div class="tv-legend-item tv-student status-in_exam">في الاختبار</div>
+        <div class="tv-legend-item tv-student status-waiting">انتظار</div>
+        <div class="tv-legend-item tv-student status-on_waiting_list">قائمة الانتظار</div>
+        <div class="tv-legend-item tv-student status-late">متأخر</div>
+        <div class="tv-legend-item tv-student status-finished">منتهي</div>
+    </footer>
 
     <script>
         (function () {
-            const container = document.getElementById('roomsTable');
-            const rooms = Array.from(container.querySelectorAll('.room-column'));
-        
-            if (!rooms.length) return;
-        
-            let currentRoomIndex = 0;
-            const scrollDuration = 10000;  // 10s to scroll down or up
-            const pauseAtEnd = 5000;       // 5s pause at bottom of each room
-            const pauseAfterAll = 5000;    // 5s pause before refreshing
-        
-            function scrollElement(el, direction = 1, duration = 10000, callback) {
-                const startTime = performance.now();
-                const startScroll = el.scrollTop;
-                const maxScroll = el.scrollHeight - el.clientHeight;
-                const targetScroll = direction === 1 ? maxScroll : 0;
-                const distance = targetScroll - startScroll;
-        
-                function step(timestamp) {
-                    const elapsed = timestamp - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    el.scrollTop = startScroll + distance * progress;
-        
-                    if (progress < 1) {
-                        requestAnimationFrame(step);
-                    } else {
-                        callback && callback();
-                    }
+            const stage = document.querySelector('.tv-window-stage');
+            const list = document.getElementById('tvWindowBoardList');
+            const track = document.getElementById('tvWindowBoardTrack');
+            const pauseMs = 650;
+            const speedPxPerSecond = 95;
+            let direction = 1;
+            let pauseUntil = Date.now() + pauseMs;
+            let lastTick = Date.now();
+            let offset = 0;
+
+            function tickScroll() {
+                if (!list || !track) return;
+
+                const maxOffset = Math.max(0, track.scrollHeight - list.clientHeight);
+                if (maxOffset <= 2) {
+                    track.style.transform = 'translateY(0)';
+                    return;
                 }
-        
-                requestAnimationFrame(step);
+
+                const now = Date.now();
+                if (now < pauseUntil) {
+                    lastTick = now;
+                    return;
+                }
+
+                const elapsedSeconds = Math.min((now - lastTick) / 1000, 0.08);
+                lastTick = now;
+
+                offset += direction * speedPxPerSecond * elapsedSeconds;
+
+                if (offset >= maxOffset) {
+                    offset = maxOffset;
+                    direction = -1;
+                    pauseUntil = Date.now() + pauseMs;
+                } else if (offset <= 0) {
+                    offset = 0;
+                    direction = 1;
+                    pauseUntil = Date.now() + pauseMs;
+                }
+
+                track.style.transform = 'translateY(-' + offset.toFixed(2) + 'px)';
             }
-        
-            function scrollRoom(index) {
-                const room = rooms[index];
-                const roomOffset = room.offsetLeft;
-                container.scrollTo({ left: roomOffset, behavior: 'smooth' });
-        
-                room.scrollTop = 0;
-        
-                // Scroll down
-                scrollElement(room, 1, scrollDuration, () => {
-                    // Pause at bottom
-                    setTimeout(() => {
-                        // Scroll up
-                        scrollElement(room, -1, scrollDuration, () => {
-                            currentRoomIndex++;
-        
-                            if (currentRoomIndex < rooms.length) {
-                                scrollRoom(currentRoomIndex);
-                            } else {
-                                // Done all rooms, pause then refresh
-                                setTimeout(() => location.reload(), pauseAfterAll);
-                            }
-                        });
-                    }, pauseAtEnd);
-                });
-            }
-        
-            scrollRoom(currentRoomIndex);
+
+            setInterval(tickScroll, 16);
         })();
-        </script>
-<!-- Legend for statuses -->
-<!-- Legend for statuses -->
-<div style="
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100vw;
-    background-color: #fff;
-    border-top: 1px solid #ccc;
-    padding: 1em 2em;
-    direction: rtl;
-    font-size: 0.9em;
-    box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-">
-    <div style="
-        display: flex; 
-        gap: 1.5em; 
-        flex-wrap: nowrap; 
-        max-width: 3000px; 
-        width: 100%; 
-        justify-content: center;
-    ">
-        <div style="
-            background-color: #2ecc71; 
-            color: white; 
-            padding: 0.9em 0; 
-            border-radius: 4px; 
-            flex-grow: 1; 
-            text-align: center;
-            min-width: 0;
-            margin: 0 0.5em;
-        ">في الامتحان</div>
-        <div style="
-            background-color: #f1c40f; 
-            color: black; 
-            padding: 0.9em 0; 
-            border-radius: 4px; 
-            flex-grow: 1; 
-            text-align: center;
-            min-width: 0;
-            margin: 0 0.5em;
-        ">انتظار</div>
-        <div style="
-            background-color: #e67e22; 
-            color: white; 
-            padding: 0.9em 0; 
-            border-radius: 4px; 
-            flex-grow: 1; 
-            text-align: center;
-            min-width: 0;
-            margin: 0 0.5em;
-        ">قائمة الانتظار</div>
-        <div style="
-            background-color: #bdc3c7; 
-            color: black; 
-            padding: 0.9em 0; 
-            border-radius: 4px; 
-            flex-grow: 1; 
-            text-align: center;
-            min-width: 0;
-            margin: 0 0.5em;
-        ">منتهي</div>
-    </div>
-</div>
+    </script>
+    {% else %}
+    <main class="tv-stage {{ tv_density_class }}"
+          data-page-rotate-ms="{{ rotate_interval_ms }}"
+          data-student-rotate-ms="{{ student_slice_rotate_ms }}"
+          data-visible-students="{{ visible_students_per_room }}"
+          data-exam-start-minutes="{{ exam_start_minutes }}"
+          data-estimate-minutes="{{ estimate_minutes }}">
+        <header class="tv-topline">
+            <div>
+                <span class="tv-kicker">الشاشة العامة</span>
+                <h1>متابعة اللجان</h1>
+            </div>
+            <div class="tv-page-indicator">
+                <span>صفحة</span>
+                <span id="currentPage">1</span>
+                <span>/</span>
+                <span id="totalPages">{{ room_page_count }}</span>
+                <span class="tv-page-set" id="currentSet"></span>
+                <span class="tv-time-range" id="currentTimeRange"></span>
+            </div>
+            <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+        </header>
 
+        <section class="tv-pages" id="tvPages">
+            {% for page in room_pages %}
+                <div class="tv-page {% if forloop.first %}is-active{% endif %}" data-page="{{ forloop.counter }}">
+                    <div class="tv-grid">
+                        {% for room in page.rooms %}
+                            <article class="tv-room-card">
+                                <header class="tv-room-card-header">
+                                    <span class="tv-room-title">لجنة {{ room.number }}</span>
+                                </header>
 
-        
-        
-        
-        
+                                <div class="tv-compact-list" data-total="{{ room.total_count }}">
+                                    {% for student in room.students %}
+                                        <div class="tv-compact-student status-{{ student.status }}" data-student-index="{{ forloop.counter0 }}">
+                                            <span class="tv-compact-main">
+                                                <span class="tv-compact-name">{{ student.number }} - {{ student.name }}</span>
+                                                {% if student.estimated_time %}
+                                                    <span class="tv-compact-time">{{ student.estimated_time }}</span>
+                                                {% endif %}
+                                            </span>
+                                            {% if student.latest_grade %}
+                                                <span class="tv-compact-meta">{{ student.latest_grade }} - {{ student.latest_result }}</span>
+                                            {% elif student.status == 'waiting' or student.status == 'on_waiting_list' %}
+                                                <span class="tv-compact-meta">{{ student.get_status_display }}</span>
+                                            {% else %}
+                                                <span class="tv-compact-meta">{{ student.get_status_display }}</span>
+                                            {% endif %}
+                                        </div>
+                                    {% empty %}
+                                        <div class="tv-empty-room">لا يوجد طلاب</div>
+                                    {% endfor %}
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+    </main>
+
+    <footer class="tv-legend" aria-label="دليل الحالات">
+        <div class="tv-legend-item tv-student status-in_exam">في الاختبار</div>
+        <div class="tv-legend-item tv-student status-waiting">انتظار</div>
+        <div class="tv-legend-item tv-student status-on_waiting_list">قائمة الانتظار</div>
+        <div class="tv-legend-item tv-student status-late">متأخر</div>
+        <div class="tv-legend-item tv-student status-finished">منتهي</div>
+    </footer>
+
+    <script>
+        (function () {
+            const stage = document.querySelector('.tv-stage');
+            const pagesContainer = document.getElementById('tvPages');
+            const currentPage = document.getElementById('currentPage');
+            const totalPages = document.getElementById('totalPages');
+            const currentSet = document.getElementById('currentSet');
+            const currentTimeRange = document.getElementById('currentTimeRange');
+            const pageRotateMs = parseInt(stage.dataset.pageRotateMs || '1200', 10);
+            const studentRotateMs = parseInt(stage.dataset.studentRotateMs || '5000', 10);
+            let fallbackVisibleStudents = parseInt(stage.dataset.visibleStudents || '7', 10);
+            let examStartMinutes = parseInt(stage.dataset.examStartMinutes || '420', 10);
+            let estimateMinutes = parseInt(stage.dataset.estimateMinutes || '5', 10);
+            const maxStudentGroups = 2;
+
+            if (!pagesContainer) return;
+
+            let pages = Array.from(document.querySelectorAll('.tv-page'));
+            let pageIndex = 0;
+            let sliceIndex = 0;
+            let isRefreshing = false;
+
+            function pad(number) {
+                return String(number).padStart(2, '0');
+            }
+
+            function formatMinutes(totalMinutes) {
+                const minutesInDay = ((totalMinutes % 1440) + 1440) % 1440;
+                const hours = Math.floor(minutesInDay / 60);
+                const minutes = minutesInDay % 60;
+                const suffix = hours >= 12 ? 'PM' : 'AM';
+                const displayHours = hours % 12 || 12;
+                return {
+                    time: displayHours + ':' + pad(minutes),
+                    suffix: suffix,
+                    text: displayHours + ':' + pad(minutes) + ' ' + suffix
+                };
+            }
+
+            function formatRange(startMinutes, endMinutes) {
+                const start = formatMinutes(startMinutes);
+                const end = formatMinutes(endMinutes);
+                if (start.suffix === end.suffix) {
+                    return start.time + ' - ' + end.time + ' ' + end.suffix;
+                }
+                return start.text + ' - ' + end.text;
+            }
+
+            function getVisibleStudentCount(page) {
+                const list = page.querySelector('.tv-compact-list');
+                const row = page.querySelector('.tv-compact-student');
+                if (!list || !row) return fallbackVisibleStudents;
+
+                const listStyle = getComputedStyle(list);
+                const rowStyle = getComputedStyle(row);
+                const gap = parseFloat(listStyle.rowGap || listStyle.gap) || 5;
+                let measuredRowHeight = row.getBoundingClientRect().height;
+                if (!measuredRowHeight) {
+                    const wasVisible = row.classList.contains('is-visible');
+                    const previousVisibility = row.style.visibility;
+                    row.classList.add('is-visible');
+                    row.style.visibility = 'hidden';
+                    measuredRowHeight = row.getBoundingClientRect().height;
+                    row.style.visibility = previousVisibility;
+                    row.classList.toggle('is-visible', wasVisible);
+                }
+                const rowHeight = Math.max(parseFloat(rowStyle.minHeight) || 0, measuredRowHeight || 42);
+                const paddingTop = parseFloat(listStyle.paddingTop) || 0;
+                const paddingBottom = parseFloat(listStyle.paddingBottom) || 0;
+                const available = Math.max(0, list.clientHeight - paddingTop - paddingBottom);
+
+                return Math.max(1, Math.floor((available + gap) / (rowHeight + gap)));
+            }
+
+            function getLargestStudentTotal(page) {
+                const totals = Array.from(page.querySelectorAll('.tv-compact-list')).map(function (list) {
+                    return parseInt(list.dataset.total || '0', 10);
+                });
+                return Math.max.apply(null, totals.concat([0]));
+            }
+
+            function getMaxSlices(page, visibleStudents) {
+                const largestTotal = getLargestStudentTotal(page);
+                return Math.min(maxStudentGroups, Math.max(1, Math.ceil(largestTotal / visibleStudents)));
+            }
+
+            function updateRoomSlices(page, nextSliceIndex) {
+                const visibleStudents = getVisibleStudentCount(page);
+                const maxSlices = getMaxSlices(page, visibleStudents);
+                const safeSliceIndex = nextSliceIndex % maxSlices;
+                const start = safeSliceIndex * visibleStudents;
+                const end = start + visibleStudents;
+
+                page.querySelectorAll('.tv-compact-list').forEach(function (list) {
+                    const students = Array.from(list.querySelectorAll('.tv-compact-student'));
+
+                    students.forEach(function (student, studentIndex) {
+                        student.classList.toggle('is-visible', studentIndex >= start && studentIndex < end);
+                    });
+                });
+
+                currentSet.textContent = maxSlices > 1 ? 'مجموعة ' + (safeSliceIndex + 1) + '/' + maxSlices : '';
+                if (currentTimeRange) {
+                    const largestTotal = getLargestStudentTotal(page);
+                    const displayTotal = largestTotal ? Math.min(largestTotal, visibleStudents * maxSlices) : visibleStudents * maxSlices;
+                    const rangeStart = examStartMinutes;
+                    const rangeEnd = examStartMinutes + displayTotal * estimateMinutes;
+                    currentTimeRange.textContent = formatRange(rangeStart, rangeEnd);
+                }
+                sliceIndex = safeSliceIndex;
+            }
+
+            function showPage(nextPageIndex) {
+                if (!pages.length) return;
+                pages[pageIndex].classList.remove('is-active');
+                pageIndex = nextPageIndex;
+                sliceIndex = 0;
+                pages[pageIndex].classList.add('is-active');
+                currentPage.textContent = String(pageIndex + 1);
+                updateRoomSlices(pages[pageIndex], sliceIndex);
+            }
+
+            function refreshBoard() {
+                if (isRefreshing) return;
+                isRefreshing = true;
+
+                fetch(window.location.href, {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    cache: 'no-store'
+                })
+                    .then(function (response) {
+                        return response.text();
+                    })
+                    .then(function (html) {
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        const nextPages = doc.getElementById('tvPages');
+                        if (!nextPages) return;
+
+                        const nextStage = doc.querySelector('.tv-stage');
+                        if (nextStage) {
+                            stage.className = nextStage.className;
+                            stage.dataset.visibleStudents = nextStage.dataset.visibleStudents || stage.dataset.visibleStudents;
+                            stage.dataset.examStartMinutes = nextStage.dataset.examStartMinutes || stage.dataset.examStartMinutes;
+                            stage.dataset.estimateMinutes = nextStage.dataset.estimateMinutes || stage.dataset.estimateMinutes;
+                            fallbackVisibleStudents = parseInt(stage.dataset.visibleStudents || '7', 10);
+                            examStartMinutes = parseInt(stage.dataset.examStartMinutes || '420', 10);
+                            estimateMinutes = parseInt(stage.dataset.estimateMinutes || '5', 10);
+                        }
+
+                        pagesContainer.innerHTML = nextPages.innerHTML;
+                        pages = Array.from(pagesContainer.querySelectorAll('.tv-page'));
+                        pageIndex = 0;
+                        sliceIndex = 0;
+
+                        if (currentPage) currentPage.textContent = pages.length ? '1' : '0';
+                        if (totalPages) totalPages.textContent = String(pages.length);
+                        pages.forEach(function (page, index) {
+                            page.classList.toggle('is-active', index === 0);
+                        });
+                        if (pages.length) updateRoomSlices(pages[0], 0);
+                    })
+                    .catch(function () {})
+                    .finally(function () {
+                        isRefreshing = false;
+                    });
+            }
+
+            function fitCurrentPage() {
+                if (pages[pageIndex]) updateRoomSlices(pages[pageIndex], sliceIndex);
+            }
+
+            if (!pages.length) return;
+            updateRoomSlices(pages[pageIndex], sliceIndex);
+
+            setInterval(function () {
+                const activePage = pages[pageIndex];
+                if (!activePage) return;
+
+                const visibleStudents = getVisibleStudentCount(activePage);
+                const maxSlices = getMaxSlices(activePage, visibleStudents);
+
+                if (sliceIndex + 1 < maxSlices) {
+                    updateRoomSlices(activePage, sliceIndex + 1);
+                    return;
+                }
+
+                if (pageIndex + 1 < pages.length) {
+                    showPage(pageIndex + 1);
+                    return;
+                }
+
+                setTimeout(refreshBoard, pageRotateMs);
+            }, studentRotateMs);
+
+            window.addEventListener('resize', fitCurrentPage);
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

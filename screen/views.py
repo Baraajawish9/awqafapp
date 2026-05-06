@@ -5,7 +5,7 @@ import random
 import openpyxl
 from datetime import datetime, time, timedelta, date
 from collections import Counter, defaultdict
-
+import re
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.utils.encoding import smart_str
@@ -25,6 +25,137 @@ from .models import Student, ScreenSettings, ExamResult, STATUS_CHOICES, RoomQue
 from .forms import StudentForm, ScreenSettingsForm
 
 
+STATUS_PRIORITY = {
+    'in_exam': 0,
+    'waiting': 1,
+    'late': 2,
+    'on_waiting_list': 3,
+    'finished': 4,
+}
+
+ROOMS_PER_SCREEN_PAGE = 12
+VISIBLE_STUDENTS_PER_TV_ROOM = 7
+STUDENT_SLICE_ROTATE_MS = 5000
+
+
+def get_tv_layout(room_count):
+    if room_count <= 6:
+        return {
+            'rooms_per_page': 6,
+            'visible_students': 9,
+            'student_rotate_ms': 4500,
+            'density_class': 'tv-density-6 tv-grid-3x2',
+        }
+
+    if room_count <= 8:
+        return {
+            'rooms_per_page': 8,
+            'visible_students': 8,
+            'student_rotate_ms': 4500,
+            'density_class': 'tv-density-8 tv-grid-4x2',
+        }
+
+    if room_count <= 12:
+        return {
+            'rooms_per_page': 12,
+            'visible_students': 7,
+            'student_rotate_ms': 4500,
+            'density_class': 'tv-density-12 tv-grid-4x3',
+        }
+
+    if room_count <= 15:
+        return {
+            'rooms_per_page': 15,
+            'visible_students': 6,
+            'student_rotate_ms': 4200,
+            'density_class': 'tv-density-15 tv-grid-5x3',
+        }
+
+    if room_count == 16:
+        return {
+            'rooms_per_page': 16,
+            'visible_students': 5,
+            'student_rotate_ms': 4000,
+            'density_class': 'tv-density-16 tv-grid-4x4',
+        }
+
+    if room_count <= 20:
+        return {
+            'rooms_per_page': 20,
+            'visible_students': 5,
+            'student_rotate_ms': 4000,
+            'density_class': 'tv-density-20 tv-grid-5x4',
+        }
+
+    if room_count <= 24:
+        return {
+            'rooms_per_page': 24,
+            'visible_students': 4,
+            'student_rotate_ms': 3800,
+            'density_class': 'tv-density-24 tv-grid-6x4',
+        }
+
+    return {
+        'rooms_per_page': 30,
+        'visible_students': 3,
+        'student_rotate_ms': 3500,
+        'density_class': 'tv-density-30 tv-grid-6x5',
+    }
+
+
+def parse_room_number(room_value):
+    if room_value is None:
+        return None
+
+    room_text = str(room_value).strip().lower().replace('room', '')
+    try:
+        return int(room_text)
+    except (TypeError, ValueError):
+        return None
+
+
+def room_sort_key(student):
+    return (
+        STATUS_PRIORITY.get(student.status, 99),
+        student.position or 0,
+        student.number or 0,
+    )
+
+
+def get_current_student_for_room(room_number):
+    room_number = parse_room_number(room_number)
+    if room_number is None:
+        return None
+
+    return (
+        Student.objects
+        .filter(room__in=[str(room_number), f'room{room_number}'], status='in_exam')
+        .order_by('position', 'number')
+        .first()
+    )
+
+
+def is_current_student_for_room(student):
+    room_number = parse_room_number(student.room)
+    current_student = get_current_student_for_room(room_number)
+    return bool(current_student and current_student.number == student.number)
+
+
+def chunked(items, chunk_size):
+    return [items[index:index + chunk_size] for index in range(0, len(items), chunk_size)]
+
+
+def normalize_time_value(value, fallback=None):
+    if isinstance(value, time):
+        return value
+    if isinstance(value, str):
+        for time_format in ("%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(value, time_format).time()
+            except ValueError:
+                pass
+    return fallback or time(7, 0)
+
 
 def get_room_count():
     settings = ScreenSettings.objects.last()
@@ -43,23 +174,87 @@ def get_least_loaded_room():
     # Return the least loaded room (ties broken randomly)
     return min(rooms, key=lambda r: room_counts[r])
 
+
+def get_least_loaded_room_from(room_options, extra_counts=None):
+    rooms = [int(room) for room in room_options if room]
+    if not rooms:
+        return get_least_loaded_room()
+
+    random.shuffle(rooms)
+    room_counts = Counter(parse_room_number(room) for room in Student.objects.values_list('room', flat=True))
+    if extra_counts:
+        room_counts.update(extra_counts)
+
+    for room in rooms:
+        room_counts.setdefault(room, 0)
+
+    return min(rooms, key=lambda room: room_counts[room])
+
+
+def parse_import_room_mappings(post_data):
+    mappings = []
+    mapping_indexes = set()
+
+    for key in post_data.keys():
+        match = re.fullmatch(r'mapping_juz_(\d+)', key)
+        if match:
+            mapping_indexes.add(match.group(1))
+
+    for index in sorted(mapping_indexes, key=int):
+        juz_values = []
+        room_values = []
+
+        for value in post_data.getlist(f'mapping_juz_{index}'):
+            try:
+                juz_values.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        for value in post_data.getlist(f'mapping_room_{index}'):
+            try:
+                room_values.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        if juz_values and room_values:
+            mappings.append({
+                'juz': set(juz_values),
+                'rooms': list(dict.fromkeys(room_values)),
+            })
+
+    return mappings
+
+
+def get_mapped_import_room(parts, mappings, extra_counts):
+    try:
+        parts_number = int(parts)
+    except (TypeError, ValueError):
+        return None
+
+    for mapping in mappings:
+        if parts_number in mapping['juz']:
+            room = get_least_loaded_room_from(mapping['rooms'], extra_counts)
+            extra_counts[room] += 1
+            return room
+
+    return None
 @login_required
 @staff_member_required
 def public_screen(request):
-    
-    # Order by room and student position instead of number
-    students = list(Student.objects.all().order_by('room', 'position'))
+    screen_settings = ScreenSettings.get_settings()
+    room_count = screen_settings.room_count or 5
+    tv_layout = get_tv_layout(room_count)
+    rooms = list(range(1, room_count + 1))
+    students = list(Student.objects.all().order_by('room', 'position', 'number'))
 
-    # Fetch the latest ExamResult for each student
     latest_ids = (
         ExamResult.objects
+        .filter(sub_room='0')
         .values('number')
         .annotate(latest_id=Max('id'))
         .values_list('latest_id', flat=True)
     )
     results = ExamResult.objects.filter(id__in=latest_ids)
-
-    # Map student number → grade/result
     latest_results = {
         res.number: {
             'grade': res.grade,
@@ -68,65 +263,150 @@ def public_screen(request):
         for res in results
     }
 
-    # Attach latest grade/result to student objects
     for student in students:
         result = latest_results.get(student.number)
         student.latest_grade = result['grade'] if result else None
         student.latest_result = result['result'] if result else None
+        student.room_number = parse_room_number(student.room)
 
-    # Group students by room
     students_by_room = defaultdict(list)
     for student in students:
-        students_by_room[student.room].append(student)
+        if student.room_number in rooms:
+            students_by_room[student.room_number].append(student)
 
-    # Optional: sort within room (finished last, but keep order otherwise)
-    for room, room_students in students_by_room.items():
-        room_students.sort(key=lambda s: (s.status == 'finished', s.position))
+    for room_students in students_by_room.values():
+        room_students.sort(key=room_sort_key)
 
-    # Load screen settings
-    screen_settings = ScreenSettings.get_settings()
     estimate_minutes = screen_settings.estimate_time_per_student or 5
-
-    # Get exam start time from settings (datetime.time) or default to 7:00 AM
-    exam_start_time_value = screen_settings.exam_start_time or time(7, 0)
-
-    # Combine with today's date to form a naive datetime
-    today = datetime.today()
-    naive_start_datetime = datetime.combine(today, exam_start_time_value)
-
-    # Make timezone aware
+    exam_start_time_value = normalize_time_value(screen_settings.exam_start_time, time(7, 0))
+    naive_start_datetime = datetime.combine(datetime.today(), exam_start_time_value)
     tz = get_current_timezone()
-    exam_start_time = make_aware(naive_start_datetime, timezone=tz)
-    exam_start_time = localtime(exam_start_time)  # Convert to local time if needed
+    exam_start_time = localtime(make_aware(naive_start_datetime, timezone=tz))
 
+    if screen_settings.public_screen_mode == 'window':
+        now = localtime()
+        window_end = now + timedelta(minutes=15)
+        schedule_students = []
 
-    student_wait_times = {}
-    for room, students_in_room in students_by_room.items():
-        waiting_students = [s for s in students_in_room if s.status in ['waiting', 'on_waiting_list']]
-        for idx, student in enumerate(waiting_students):
-            wait_delta = timedelta(minutes=(idx + 1) * estimate_minutes)
-            wait_time = exam_start_time + wait_delta
-            student_wait_times[student.number] = wait_time.strftime("%I:%M").lstrip("0")
+        for room, room_students in students_by_room.items():
+            active_students = sorted(
+                [student for student in room_students if student.status != 'finished'],
+                key=lambda student: (student.position or 0, student.number or 0),
+            )
+            for idx, student in enumerate(active_students):
+                scheduled_time = exam_start_time + timedelta(minutes=idx * estimate_minutes)
+                if now <= scheduled_time <= window_end:
+                    student.scheduled_at = scheduled_time
+                    student.scheduled_time = scheduled_time.strftime("%H:%M")
+                    student.room_number = room
+                    schedule_students.append(student)
 
+        schedule_students.sort(key=lambda student: (
+            getattr(student, 'scheduled_at', exam_start_time),
+            student.room_number or 0,
+            student.position or 0,
+            student.number or 0,
+        ))
+        schedule_students_by_room = defaultdict(list)
+        for student in schedule_students:
+            schedule_students_by_room[student.room_number].append(student)
+
+        schedule_room_cards = [
+            {
+                'number': room,
+                'students': room_students,
+                'total_count': len(room_students),
+            }
+            for room, room_students in sorted(schedule_students_by_room.items())
+        ]
+        schedule_room_pages = [
+            {
+                'number': index + 1,
+                'rooms': page_rooms,
+            }
+            for index, page_rooms in enumerate(chunked(schedule_room_cards, tv_layout['rooms_per_page']))
+        ]
+
+        return render(request, 'screen/public_screen.html', {
+            'screen_mode': 'window',
+            'schedule_students': schedule_students,
+            'schedule_room_pages': schedule_room_pages,
+            'schedule_room_page_count': len(schedule_room_pages),
+            'schedule_window_start': now.strftime("%H:%M"),
+            'schedule_window_end': window_end.strftime("%H:%M"),
+            'schedule_refresh_ms': 30000,
+            'tv_density_class': tv_layout['density_class'],
+        })
+
+    for students_in_room in students_by_room.values():
+        for idx, student in enumerate(students_in_room):
+            scheduled_time = exam_start_time + timedelta(minutes=idx * estimate_minutes)
+            student.estimated_time = scheduled_time.strftime("%I:%M %p").lstrip("0")
+
+    room_cards = []
+    for room in rooms:
+        room_students = students_by_room.get(room, [])
+        status_counts = Counter(student.status for student in room_students)
+
+        room_cards.append({
+            'number': room,
+            'students': room_students,
+            'total_count': len(room_students),
+            'current_student': next((s for s in room_students if s.status == 'in_exam'), None),
+            'waiting_count': status_counts.get('waiting', 0) + status_counts.get('on_waiting_list', 0),
+            'late_count': status_counts.get('late', 0),
+        })
+
+    room_pages = [
+        {
+            'number': index + 1,
+            'rooms': page_rooms,
+        }
+        for index, page_rooms in enumerate(chunked(room_cards, tv_layout['rooms_per_page']))
+    ]
 
     return render(request, 'screen/public_screen.html', {
-        'students_by_room': students_by_room,
-        'rooms': range(1, get_room_count() + 1),
-        'student_wait_times': student_wait_times,
+        'screen_mode': 'rooms',
+        'room_pages': room_pages,
+        'room_page_count': len(room_pages),
+        'rotate_interval_ms': 1200,
+        'student_slice_rotate_ms': tv_layout['student_rotate_ms'],
+        'visible_students_per_room': tv_layout['visible_students'],
+        'tv_density_class': tv_layout['density_class'],
+        'exam_start_minutes': exam_start_time.hour * 60 + exam_start_time.minute,
+        'estimate_minutes': estimate_minutes,
     })
+
 @login_required
 def clear_students(request):
     if request.method == 'POST':
         Student.objects.all().delete()
-    return redirect('/screen/add-student')
+    return redirect('add_student')
 
 def apply_automatic_status_for_room(room):
-    students = Student.objects.filter(room=room).exclude(status='finished').order_by('position')
+    settings = ScreenSettings.objects.last()
+    waiting_limit = settings.waiting_count if settings else 5
+    students = list(Student.objects.filter(room=room).exclude(status='finished').order_by('position'))
+    late_students = [student for student in students if student.status == 'late']
+    other_students = [student for student in students if student.status != 'late']
+    new_order = []
 
-    for i, student in enumerate(students):
-        if i == 0:
+    if other_students:
+        new_order.append(other_students.pop(0))
+
+    waiting_students = other_students[:waiting_limit]
+    new_order.extend(waiting_students)
+    other_students = other_students[waiting_limit:]
+    new_order.extend(late_students)
+    new_order.extend(other_students)
+
+    for idx, student in enumerate(new_order):
+        student.position = idx
+        if student in late_students:
+            student.status = 'late'
+        elif idx == 0:
             student.status = 'in_exam'
-        elif 1 <= i <= 6:
+        elif 1 <= idx <= waiting_limit:
             student.status = 'waiting'
         else:
             student.status = 'on_waiting_list'
@@ -176,23 +456,52 @@ def apply_automatic_status():
     rooms = Student.objects.values_list('room', flat=True).distinct()
 
     for room in rooms:
-        # ORDER BY 'position' to reflect current order after moves
-        students = Student.objects.filter(room=room).exclude(status='finished').order_by('position')
-        for i, student in enumerate(students):
-            if i == 0:
+        students = list(Student.objects.filter(room=room).exclude(status='finished').order_by('position'))
+
+        # Separate late and non-late students
+        late_students = [s for s in students if s.status == 'late']
+        other_students = [s for s in students if s.status != 'late']
+
+        # Combine students into new ordered list
+        # 1 in_exam, then waiting_limit waiting, then all late, then on_waiting_list
+        new_order = []
+
+        # For non-late students, we'll treat them as "waiting pool"
+        # We need to fill: 1 in_exam + waiting_limit waiting + on_waiting_list
+
+        # Assign first student as in_exam (if exists)
+        if other_students:
+            new_order.append(other_students.pop(0))
+
+        # Assign next waiting_limit students as waiting
+        waiting_students = other_students[:waiting_limit]
+        new_order.extend(waiting_students)
+        other_students = other_students[waiting_limit:]  # remaining non-late students
+
+        # Now add all late students (they come after waiting)
+        new_order.extend(late_students)
+
+        # Finally add remaining other_students as on_waiting_list
+        new_order.extend(other_students)
+
+        # Now assign positions and statuses based on this new order
+        for idx, student in enumerate(new_order):
+            student.position = idx
+            if student in late_students:
+                student.status = 'late'
+            elif idx == 0:
                 student.status = 'in_exam'
-            elif 1 <= i <= waiting_limit:
+            elif 1 <= idx <= waiting_limit:
                 student.status = 'waiting'
             else:
                 student.status = 'on_waiting_list'
             student.save()
 
 
-
 @login_required
 def trigger_automatic_status(request):
     apply_automatic_status()
-    return redirect('/screen/add-student')
+    return redirect('add_student')
 @login_required
 @staff_member_required
 def add_student(request):
@@ -203,8 +512,9 @@ def add_student(request):
         if form.is_valid():
             student = form.save(commit=False)
 
-            # Automatically assign the least loaded room
-            student.room = get_least_loaded_room()
+            # Automatically assign the least loaded room only if not selected
+            if not student.room:
+                student.room = get_least_loaded_room()
 
             # Set position to the next available one in the assigned room
             max_position = (
@@ -214,6 +524,8 @@ def add_student(request):
             student.position = (max_position or 0) + 1
 
             student.save()
+            apply_automatic_status()
+
             messages.success(request, 'تمت إضافة الطالب بنجاح.')
             return redirect('add_student')
         else:
@@ -223,10 +535,91 @@ def add_student(request):
     rooms = list(range(1, get_room_count() + 1))
     juz_list = list(range(1, 31))  # Juz numbers from 1 to 30
 
-    students_by_room = {
-        room: Student.objects.filter(room=room).order_by('position')
-        for room in rooms
-    }
+    search_query = request.GET.get('q', '').strip()
+    selected_room_raw = request.GET.get('room', '').strip()
+    selected_status = request.GET.get('status', '').strip()
+    selected_room = parse_room_number(selected_room_raw)
+    valid_statuses = {value for value, _label in STATUS_CHOICES}
+
+    if selected_room not in rooms:
+        selected_room = None
+
+    if selected_status not in valid_statuses:
+        selected_status = ''
+
+    all_students = list(Student.objects.all().order_by('room', 'position', 'number'))
+    students_by_room = {room: [] for room in rooms}
+
+    for student in all_students:
+        student.room_number = parse_room_number(student.room)
+        if student.room_number in students_by_room:
+            students_by_room[student.room_number].append(student)
+
+    for room_students in students_by_room.values():
+        room_students.sort(key=room_sort_key)
+
+    def student_matches_filters(student):
+        if selected_status and student.status != selected_status:
+            return False
+
+        if search_query:
+            query = search_query.lower()
+            searchable_values = [
+                str(student.number or ''),
+                student.name or '',
+                student.father_name or '',
+                student.institute_name or '',
+            ]
+            if not any(query in value.lower() for value in searchable_values):
+                return False
+
+        return True
+
+    has_filters = bool(search_query or selected_room or selected_status)
+    room_summaries = []
+    room_cards = []
+
+    for room in rooms:
+        room_students = students_by_room.get(room, [])
+        status_counts = Counter(student.status for student in room_students)
+        matching_students = [
+            student
+            for student in room_students
+            if (selected_room is None or room == selected_room) and student_matches_filters(student)
+        ]
+        current_student = next((student for student in room_students if student.status == 'in_exam'), None)
+
+        room_summaries.append({
+            'number': room,
+            'total_count': len(room_students),
+            'match_count': len(matching_students),
+            'current_student': current_student,
+            'waiting_count': status_counts.get('waiting', 0) + status_counts.get('on_waiting_list', 0),
+            'late_count': status_counts.get('late', 0),
+        })
+
+        should_show_room = (
+            (not has_filters and room_students)
+            or (not has_filters and room == rooms[0] and not all_students)
+            or (has_filters and bool(matching_students))
+            or (has_filters and selected_room == room)
+        )
+
+        if should_show_room:
+            room_cards.append({
+                'number': room,
+                'students': matching_students if has_filters else room_students,
+                'total_count': len(room_students),
+                'match_count': len(matching_students),
+            })
+
+    if not room_cards and rooms and not has_filters:
+        room_cards.append({
+            'number': rooms[0],
+            'students': [],
+            'total_count': 0,
+            'match_count': 0,
+        })
 
     all_institutes = (
         Student.objects.values_list('institute_name', flat=True)
@@ -237,8 +630,14 @@ def add_student(request):
     context = {
         'form': form,
         'rooms': rooms,
-        'juz_list': juz_list,           # Pass juz_list to template
+        'juz_list': juz_list,
         'students_by_room': students_by_room,
+        'room_summaries': room_summaries,
+        'room_cards': room_cards,
+        'search_query': search_query,
+        'selected_room': selected_room or '',
+        'selected_status': selected_status,
+        'has_filters': has_filters,
         'status_choices': STATUS_CHOICES,
         'all_institutes': all_institutes,
     }
@@ -247,21 +646,26 @@ def add_student(request):
 
 
 
-
 @require_POST
 @login_required
 def submit_grade(request, student_number, subroom):
     student = get_object_or_404(Student, number=student_number)
+    if subroom not in (1, 2):
+        return HttpResponse("Invalid subroom number", status=400)
+
+    room_number = parse_room_number(student.room)
+    if room_number is None:
+        return HttpResponse("Invalid room", status=400)
+
+    if not is_current_student_for_room(student):
+        return redirect('room_view', room_name=f'room{room_number}', subroom=subroom)
     
     # Parse exam config
     if student.exam_type == "gh":
-        expected_questions = 3
         pass_threshold = 80
     elif student.exam_type == "nz":
-        expected_questions = 5
         pass_threshold = 90
     else:
-        expected_questions = 0
         pass_threshold = 0
 
     # Get submitted final grade for this subroom from form
@@ -269,42 +673,46 @@ def submit_grade(request, student_number, subroom):
         final_grade = float(request.POST.get("final_grade", "100"))
     except ValueError:
         final_grade = 100
+    final_grade = max(0, min(100, final_grade))
 
     # Save/update this subroom's partial result with a temporary 'result' value
     exam_result, created = ExamResult.objects.update_or_create(
         number=student.number,
-        sub_room=subroom,
+        sub_room=str(subroom),
         defaults={
             'name': student.name,
             'grade': final_grade,
             'result': 'قيد التقييم',  # temporary placeholder to satisfy NOT NULL
-            'room': student.room,
+            'room': room_number,
         }
     )
 
-    # Check all subroom grades for this student
-    subroom_results = ExamResult.objects.filter(number=student.number).exclude(sub_room=0)
-    grades = [er.grade for er in subroom_results]
+    # Check both branch grades for this student.
+    subroom_results = ExamResult.objects.filter(number=student.number, sub_room__in=['1', '2'])
+    grades_by_subroom = {str(er.sub_room): er.grade for er in subroom_results}
 
-    if len(grades) >= 2:  # assuming 2 subrooms always
-        avg_grade = sum(grades) / len(grades)
+    if len(grades_by_subroom) == 2:
+        avg_grade = sum(grades_by_subroom.values()) / 2
         result = "ناجح" if avg_grade >= pass_threshold else "إعادة"
 
         # Save final summary with sub_room=0 to indicate final average
         ExamResult.objects.update_or_create(
             number=student.number,
-            sub_room=0,
+            sub_room='0',
             defaults={
                 'name': student.name,
                 'grade': avg_grade,
                 'result': result,
-                'room': student.room,
+                'room': room_number,
             }
         )
 
         # Mark student finished
         student.status = 'finished'
         student.save()
+        apply_automatic_status()
+        for key in ['locked_student_number', 'locked_room', 'locked_subroom']:
+            request.session.pop(key, None)
 
         # Log to CSV after final grade calculated
         csv_path = os.path.join(settings.BASE_DIR, 'grades_log.csv')
@@ -313,15 +721,11 @@ def submit_grade(request, student_number, subroom):
             writer = csv.writer(f)
             if not file_exists:
                 writer.writerow(['Student Number', 'Name', 'Final Grade', 'Result', 'Sub Room'])
-            writer.writerow([student.number, student.name, avg_grade, result])
+            writer.writerow([student.number, student.name, avg_grade, result, 'final_average'])
 
-        # Redirect to room page (choose your preferred subroom here)
-        return redirect(f"/mobileapp/room/room{student.room}/1/")
+        return redirect('room_view', room_name=f'room{room_number}', subroom=subroom)
 
-    else:
-        avg_grade = sum(grades) / len(grades)
-        # Redirect to parent room page even on first submission
-        return redirect(f"/mobileapp/room/room{student.room}/1/")
+    return redirect('room_view', room_name=f'room{room_number}', subroom=subroom)
 
 @login_required
 @staff_member_required
@@ -356,7 +760,7 @@ def edit_settings(request):
 
             apply_automatic_status()
 
-            return redirect('/screen/add-student')
+            return redirect('add_student')
 
     else:
         form = ScreenSettingsForm(instance=old_settings)
@@ -375,22 +779,10 @@ EXAM_TYPE_MAP = {
 def upload_excel(request):
     file = request.FILES.get("file")
     if not file or not file.name.endswith(".xlsx"):
-        return redirect('/screen/add-student')
+        return redirect('add_student')
 
-    # Get selected Juz number and room from POST
-    juz_number_raw = request.POST.get('juz_number', '').strip()
-    juz_room_raw = request.POST.get('juz_room', '').strip()
-
-    # Convert to int if valid, else None
-    try:
-        juz_number = int(juz_number_raw) if juz_number_raw else None
-    except:
-        juz_number = None
-
-    try:
-        juz_room = int(juz_room_raw) if juz_room_raw else None
-    except:
-        juz_room = None
+    room_mappings = parse_import_room_mappings(request.POST)
+    mapped_room_counts = Counter()
 
     wb = openpyxl.load_workbook(file)
     sheet = wb.active
@@ -429,11 +821,7 @@ def upload_excel(request):
 
             current_number += 1
 
-            # Determine assigned room:
-            if juz_number and juz_room and parts == juz_number:
-                assigned_room = juz_room
-            else:
-                assigned_room = queue.next_room()
+            assigned_room = get_mapped_import_room(parts, room_mappings, mapped_room_counts) or queue.next_room()
 
             Student.objects.create(
                 number=current_number,
@@ -451,7 +839,7 @@ def upload_excel(request):
             continue
 
     apply_automatic_status()
-    return redirect('/screen/add-student')
+    return redirect('add_student')
 
 
 
@@ -472,17 +860,19 @@ def clear_all_results(request):
     Student.objects.filter(status="finished").delete()
 
     # Redirect to the add-student page after clearing
-    return redirect('/screen/add-student')
+    return redirect('add_student')
 
 @login_required
 def export_students_excel(request):
     institute_name = request.GET.get('institute')
     if not institute_name:
         return HttpResponse("يرجى اختيار اسم المعهد", status=400)
+    include_grade = request.GET.get('include_grade') == '1'
+    last_column = 10 if include_grade else 8
 
     settings = ScreenSettings.get_settings()
     estimated_time_per_student = settings.estimate_time_per_student or 5
-    exam_start_time = settings.exam_start_time or datetime.time(8, 0)
+    exam_start_time = normalize_time_value(settings.exam_start_time, time(8, 0))
     start_minutes = exam_start_time.hour * 60 + exam_start_time.minute
 
     # Build room-wise queues
@@ -491,17 +881,32 @@ def export_students_excel(request):
     for student in students:
         room_queues[student.room].append(student)
 
+    final_results = {}
+    if include_grade:
+        latest_result_ids = (
+            ExamResult.objects
+            .filter(sub_room='0')
+            .values('number')
+            .annotate(latest_id=Max('id'))
+            .values_list('latest_id', flat=True)
+        )
+        final_results = {
+            result.number: result
+            for result in ExamResult.objects.filter(id__in=latest_result_ids)
+        }
+
     # Assign estimated times based on position in room queue
     student_times = {}
-    max_queue_length = max(len(queue) for queue in room_queues.values())
-    for index in range(max_queue_length):
-        for room in sorted(room_queues.keys()):
-            queue = room_queues[room]
-            if index < len(queue):
-                student = queue[index]
-                est_minutes = start_minutes + index * estimated_time_per_student
-                est_time = f"{est_minutes // 60:02}:{est_minutes % 60:02}"
-                student_times[student.number] = est_time
+    if room_queues:
+        max_queue_length = max(len(queue) for queue in room_queues.values())
+        for index in range(max_queue_length):
+            for room in sorted(room_queues.keys()):
+                queue = room_queues[room]
+                if index < len(queue):
+                    student = queue[index]
+                    est_minutes = start_minutes + index * estimated_time_per_student
+                    est_time = f"{est_minutes // 60:02}:{est_minutes % 60:02}"
+                    student_times[student.number] = est_time
 
     # Create Excel
     wb = Workbook()
@@ -512,12 +917,12 @@ def export_students_excel(request):
 
     def write_headers():
         nonlocal current_row
-        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=8)
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=last_column)
         ws.cell(row=current_row, column=1, value="الجمهورية العربية السورية").alignment = Alignment(horizontal='center')
         ws.cell(row=current_row, column=1).font = Font(size=14, bold=True)
         current_row += 1
 
-        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=8)
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=last_column)
         ws.cell(row=current_row, column=1, value="استمارة  اختبار الأجزاء المتفرقة").alignment = Alignment(horizontal='center')
         ws.cell(row=current_row, column=1).font = Font(size=12, bold=True)
         current_row += 1
@@ -525,19 +930,21 @@ def export_students_excel(request):
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=4)
         ws.cell(row=current_row, column=1, value="وزارة الأوقاف").alignment = Alignment(horizontal='center')
         ws.cell(row=current_row, column=1).font = Font(bold=True)
-        ws.merge_cells(start_row=current_row, start_column=5, end_row=current_row, end_column=8)
+        ws.merge_cells(start_row=current_row, start_column=5, end_row=current_row, end_column=last_column)
         ws.cell(row=current_row, column=5, value="مركز الحسنين").alignment = Alignment(horizontal='center')
         ws.cell(row=current_row, column=5).font = Font(bold=True)
         current_row += 1
 
-        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=8)
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=last_column)
         ws.cell(row=current_row, column=1, value="مديرية معاهد تحفيظ القرآن الكريم بدمشق").alignment = Alignment(horizontal='center')
         ws.cell(row=current_row, column=1).font = Font(bold=True)
         current_row += 2
 
     def write_table_header():
         nonlocal current_row
-        headers = ['الرقم', 'الاسم والكنية', 'اسم الأب', 'تاريخ الولادة', 'اسم المعهد', 'غيباً/نظراً', 'الأجزاء المحفوظة', 'الوقت المتوقع']
+        headers = ['الرقم', 'الاسم والكنية', 'اسم الأب', 'تاريخ الولادة', 'اسم المعهد', 'غيباً/نظراً', 'الأجزاء المحفوظة', 'الوقت المتوقع', 'الدرجة', 'النتيجة']
+        if not include_grade:
+            headers = headers[:8]
         for i, header in enumerate(headers, 1):
             cell = ws.cell(row=current_row, column=i, value=header)
             cell.font = Font(bold=True)
@@ -548,7 +955,8 @@ def export_students_excel(request):
         nonlocal current_row
         exam_type = student.get_exam_type_display() if hasattr(student, 'get_exam_type_display') else student.exam_type
         est_time = student_times.get(student.number, '')
-        ws.append([
+        final_result = final_results.get(student.number)
+        row = [
             student.number,
             smart_str(student.name),
             smart_str(student.father_name or ''),
@@ -556,8 +964,14 @@ def export_students_excel(request):
             smart_str(student.institute_name or ''),
             exam_type,
             student.memorized_parts or '',
-            est_time
-        ])
+            est_time,
+        ]
+        if include_grade:
+            row.extend([
+                final_result.grade if final_result else '',
+                smart_str(final_result.result) if final_result else '',
+            ])
+        ws.append(row)
         current_row += 1
 
     ws.column_dimensions['A'].width = 8
@@ -568,6 +982,9 @@ def export_students_excel(request):
     ws.column_dimensions['F'].width = 10
     ws.column_dimensions['G'].width = 15
     ws.column_dimensions['H'].width = 15
+    if include_grade:
+        ws.column_dimensions['I'].width = 12
+        ws.column_dimensions['J'].width = 12
 
     write_headers()
     write_table_header()
@@ -581,12 +998,14 @@ def export_students_excel(request):
             sorted_students = sorted(grouped[institute], key=lambda x: student_times.get(x.number, ''))
             for stu in sorted_students:
                 write_student_row(stu)
-        filename = f"All_Students_{datetime.today().date()}.xlsx"
+        filename_prefix = "All_Students_With_Grades" if include_grade else "All_Students"
+        filename = f"{filename_prefix}_{datetime.today().date()}.xlsx"
     else:
         filtered_students = Student.objects.filter(institute_name=institute_name).order_by('room', 'number')
         for student in sorted(filtered_students, key=lambda x: student_times.get(x.number, '')):
             write_student_row(student)
-        filename = f"Students_{institute_name}_{datetime.today().date()}.xlsx"
+        filename_prefix = "Students_With_Grades" if include_grade else "Students"
+        filename = f"{filename_prefix}_{institute_name}_{datetime.today().date()}.xlsx"
 
 
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

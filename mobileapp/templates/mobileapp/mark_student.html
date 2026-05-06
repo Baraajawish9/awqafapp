@@ -1,168 +1,199 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme-scope="quizzer-{{ room_name }}-{{ subroom }}">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ student.name }}</title>
-    <style>
-        body { font-family: sans-serif; padding: 1em; background: #f9f9f9; }
-        .student-info { background: white; padding: 1em; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-width: 1000px; margin: auto; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
-        th, td { text-align: center; padding: 8px; border: 1px solid #ddd; }
-        th { background-color: #e0f7fa; }
-        button { background-color: teal; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background-color: #004d40; }
-        .mistake-label {
-            cursor: pointer;
-            display: inline-block;
-            background-color: #b2dfdb;
-            border-radius: 4px;
-            padding: 5px 10px;
-            margin: 3px;
-            user-select: none;
-            transition: background-color 0.3s;
-        }
-        .mistake-label:hover {
-            background-color: #80cbc4;
-        }
-        .remove-btn {
-            margin-right: 8px;
-            color: red;
-            cursor: pointer;
-            font-weight: bold;
-            display: inline-block;
-            transition: transform 0.2s;
-        }
-        
-        .remove-btn:hover {
-            transform: scale(1.2);
-        }
-        
-        .mistakes-container {
-            margin-top: 10px;
-            text-align: right;
-            font-size: 0.9em;
-            color: #333;
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            padding: 8px;
-            border-radius: 4px;
-            background-color: #fafafa;
-        }
-        .mistake-line { margin-bottom: 4px; }
-    </style>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=grade-orientation-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
-<body>
-    {% if student.status == 'finished' %}
-    <div style="text-align:center; margin: 3em; font-size: 1.2em; color: red;">
-        لا يمكنك تعديل نتيجة طالب انتهى امتحانه.
+<body class="grade-page">
+    <div class="orientation-guard" role="dialog" aria-live="polite">
+        <div class="orientation-card">
+            <div class="orientation-icon" aria-hidden="true">↻</div>
+            <h2>يرجى تدوير الجهاز</h2>
+            <p>نموذج التقييم يحتاج الوضع الأفقي حتى تكون الأزرار واضحة وسهلة الاختيار.</p>
+            <button type="button" data-landscape-button>فتح بالوضع الأفقي</button>
+        </div>
     </div>
-{% else %}
 
+    <main class="mobile-page">
+        {% if student.status == 'finished' %}
+            <section class="panel">
+                <div class="panel-body">
+                    <div class="empty-state">لا يمكنك تعديل نتيجة طالب انتهى امتحانه.</div>
+                </div>
+            </section>
+        {% else %}
+            <header class="mobile-header">
+                <div>
+                    <p class="page-kicker">التقييم - فرع اللجنة {{ subroom }}</p>
+                    <h1 class="page-title">{{ student.name }}</h1>
+                </div>
+                <div class="form-actions">
+                    <button class="button secondary landscape-action" type="button" data-landscape-button>وضع أفقي</button>
+                    <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+                    <a class="button secondary" href="{% url 'room_view' room_name subroom %}">رجوع للقائمة</a>
+                </div>
+            </header>
 
-<div class="student-info">
-    <table>
-        <tr><th>رقم الطالب</th><td>{{ student.number }}</td></tr>
-        <tr><th>الاسم والكنية</th><td>{{ student.name }}</td></tr>
-        <tr><th>اسم الأب</th><td>{{ student.father_name|default:"لا يوجد بيانات" }}</td></tr>
-        <tr><th>تولد</th><td>{% if student.year %}{{ student.year|date:"Y" }}{% else %}غير محدد{% endif %}</td></tr>
-        <tr><th>اسم المعهد</th><td>{{ student.institute_name|default:"لا يوجد بيانات" }}</td></tr>
-        <tr><th>نوع الامتحان</th><td>{{ student.get_exam_type_display|default:"لا يوجد بيانات" }}</td></tr>
-        <tr><th>الأجزاء</th><td>{{ student.memorized_parts|default:"لا يوجد بيانات" }}</td></tr>
-    </table>
+            <section class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">بيانات الطالب</h2>
+                    <span class="status-chip status-{{ student.status }}">{{ student.get_status_display }}</span>
+                </div>
+                <div class="panel-body">
+                    <div class="student-table-wrap">
+                        <table class="info-table">
+                            <tr>
+                                <th>رقم الطالب</th>
+                                <td>{{ student.number }}</td>
+                            </tr>
+                            <tr>
+                                <th>الاسم والكنية</th>
+                                <td>{{ student.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>اسم الأب</th>
+                                <td>{{ student.father_name|default:"لا يوجد بيانات" }}</td>
+                            </tr>
+                            <tr>
+                                <th>سنة التولد</th>
+                                <td>{{ student.birth_year|default:"غير محدد" }}</td>
+                            </tr>
+                            <tr>
+                                <th>اسم المعهد</th>
+                                <td>{{ student.institute_name|default:"لا يوجد بيانات" }}</td>
+                            </tr>
+                            <tr>
+                                <th>نوع الاختبار</th>
+                                <td>{{ student.get_exam_type_display|default:"لا يوجد بيانات" }}</td>
+                            </tr>
+                            <tr>
+                                <th>الأجزاء</th>
+                                <td>{{ student.memorized_parts|default:"لا يوجد بيانات" }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
-    {% if student.exam_type == "gh" %}
-        {% include "mobileapp/form_gh.html" %}
-    {% else %}
-        {% include "mobileapp/form_nz.html" %}
-    {% endif %}
+            <section class="panel mt-14">
+                <div class="panel-header">
+                    <h2 class="panel-title">نموذج التقييم</h2>
+                </div>
+                <div class="panel-body">
+                    {% if student.exam_type == "gh" %}
+                        {% include "mobileapp/form_gh.html" %}
+                    {% else %}
+                        {% include "mobileapp/form_nz.html" %}
+                    {% endif %}
+                </div>
+            </section>
+        {% endif %}
+    </main>
 
+    <script>
+        function updateMistakeDisplay(question, category, value, text) {
+            const container = document.getElementById(`mistakes-${question}`);
+            if (!container) return;
 
-</div>
+            const line = document.createElement('div');
+            const label = document.createElement('span');
+            const removeBtn = document.createElement('span');
 
-<script>
-    function updateMistakeDisplay(question, category, value, text) {
-        const container = document.getElementById(`mistakes-${question}`);
-        const line = document.createElement('div');
-        line.className = 'mistake-line';
-        line.dataset.value = value;
-        line.dataset.category = category;
-        line.innerHTML = `خطأ في ${category}: ${text} <span class="remove-btn" title="إزالة">❌</span>`;
-    
-        const removeBtn = line.querySelector('.remove-btn');
-        removeBtn.addEventListener('click', () => {
-            line.remove();
-            calculateFinalGrade();
-        });
-    
-        container.appendChild(line);
-    }
-    
-    
-    function calculateFinalGrade() {
-        let totalDeduction = 0;
-    
-        document.querySelectorAll('.mistake-line').forEach(line => {
-            const value = parseFloat(line.dataset.value);
-            if (!isNaN(value)) totalDeduction += value;
-        });
-    
-        const grade = Math.max(-100, 100 - totalDeduction);
-    
-        // Update all inputs with names starting with final_grade
-        document.querySelectorAll('input[name^="final_grade"]').forEach(input => {
-            input.value = grade;
-        });
-    
-        const collected = {};
-        document.querySelectorAll('.mistakes-container').forEach(container => {
-            const q = container.id.replace('mistakes-', '');
-            collected[q] = [];
-            container.querySelectorAll('.mistake-line').forEach(line => {
-                collected[q].push({
-                    category: line.dataset.category,
-                    value: parseFloat(line.dataset.value),
-                    text: line.textContent
+            line.className = 'mistake-line';
+            line.dataset.value = value;
+            line.dataset.category = category;
+
+            label.textContent = `خطأ في ${category}: ${text}`;
+            removeBtn.className = 'remove-btn';
+            removeBtn.title = 'إزالة';
+            removeBtn.textContent = '×';
+            removeBtn.addEventListener('click', function () {
+                line.remove();
+                calculateFinalGrade();
+            });
+
+            line.appendChild(label);
+            line.appendChild(removeBtn);
+            container.appendChild(line);
+        }
+
+        function calculateFinalGrade() {
+            let totalDeduction = 0;
+
+            document.querySelectorAll('.mistake-line').forEach(function (line) {
+                const value = parseFloat(line.dataset.value);
+                if (!isNaN(value)) totalDeduction += value;
+            });
+
+            const grade = Math.max(0, 100 - totalDeduction);
+
+            document.querySelectorAll('input[name^="final_grade"]').forEach(function (input) {
+                input.value = grade;
+            });
+
+            const collected = {};
+            document.querySelectorAll('.mistakes-container').forEach(function (container) {
+                const question = container.id.replace('mistakes-', '');
+                collected[question] = [];
+
+                container.querySelectorAll('.mistake-line').forEach(function (line) {
+                    collected[question].push({
+                        category: line.dataset.category,
+                        value: parseFloat(line.dataset.value),
+                        text: line.textContent
+                    });
                 });
             });
-        });
-    
-        // Update all inputs with names starting with mistakes_json
-        document.querySelectorAll('input[name^="mistakes_json"]').forEach(input => {
-            const jsonStr = JSON.stringify(collected);
-            input.value = jsonStr;
-        });
-    
-    }
-    
-    
-    
-    document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.mistake-label').forEach(label => {
-            label.addEventListener('click', () => {
-                const q = label.dataset.question;
-                const cat = label.dataset.category;
-                const val = parseFloat(label.dataset.value);
-                const txt = label.textContent;
-    
-                updateMistakeDisplay(q, cat, val, txt);
-                calculateFinalGrade();
-            });
-        });
-    
-        document.querySelectorAll('form#grade-form').forEach(form => {
-            form.addEventListener('submit', e => {
-                calculateFinalGrade();
-    
-                // no preventDefault so form submits normally with updated inputs
-            });
-        });
-    });
-    </script>
-    
-    
-    <!-- Your entire current template content goes here -->
-    {% endif %}
 
+            document.querySelectorAll('input[name^="mistakes_json"]').forEach(function (input) {
+                input.value = JSON.stringify(collected);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            function requestLandscape() {
+                const lockOrientation = function () {
+                    if (!screen.orientation || !screen.orientation.lock) return;
+                    screen.orientation.lock('landscape').catch(function () {
+                        screen.orientation.lock('landscape-primary').catch(function () {});
+                    });
+                };
+
+                if (document.fullscreenEnabled && !document.fullscreenElement) {
+                    document.documentElement.requestFullscreen()
+                        .then(lockOrientation)
+                        .catch(lockOrientation);
+                    return;
+                }
+
+                lockOrientation();
+            }
+
+            document.querySelectorAll('[data-landscape-button]').forEach(function (button) {
+                button.addEventListener('click', requestLandscape);
+            });
+
+            document.querySelectorAll('.mistake-label').forEach(function (label) {
+                label.addEventListener('click', function () {
+                    updateMistakeDisplay(
+                        label.dataset.question,
+                        label.dataset.category,
+                        parseFloat(label.dataset.value),
+                        label.textContent
+                    );
+                    calculateFinalGrade();
+                });
+            });
+
+            document.querySelectorAll('form.grade-form').forEach(function (form) {
+                form.addEventListener('submit', calculateFinalGrade);
+            });
+        });
+    </script>
 </body>
 </html>

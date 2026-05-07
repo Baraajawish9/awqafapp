@@ -135,6 +135,20 @@ def get_current_student_for_room(room_number):
     )
 
 
+def get_top_active_student_for_room(room_number):
+    room_number = parse_room_number(room_number)
+    if room_number is None:
+        return None
+
+    return (
+        Student.objects
+        .filter(room__in=[str(room_number), f'room{room_number}'])
+        .exclude(status='finished')
+        .order_by('position', 'number')
+        .first()
+    )
+
+
 def is_current_student_for_room(student):
     room_number = parse_room_number(student.room)
     current_student = get_current_student_for_room(room_number)
@@ -238,6 +252,72 @@ def get_mapped_import_room(parts, mappings, extra_counts):
             return room
 
     return None
+
+
+def get_room_loads(extra_counts=None):
+    room_counts = Counter()
+    for room in Student.objects.exclude(status='finished').values_list('room', flat=True):
+        room_number = parse_room_number(room)
+        if room_number is not None:
+            room_counts[room_number] += 1
+
+    if extra_counts:
+        room_counts.update(extra_counts)
+
+    return room_counts
+
+
+def get_least_loaded_room_from(room_options, extra_counts=None):
+    room_count = ScreenSettings.get_room_count()
+    rooms = []
+
+    for room in room_options:
+        room_number = parse_room_number(room)
+        if room_number is not None and 1 <= room_number <= room_count:
+            rooms.append(room_number)
+
+    rooms = list(dict.fromkeys(rooms))
+    if not rooms:
+        rooms = list(range(1, room_count + 1))
+
+    random.shuffle(rooms)
+    room_counts = get_room_loads(extra_counts)
+
+    for room in rooms:
+        room_counts.setdefault(room, 0)
+
+    return min(rooms, key=lambda room: room_counts[room])
+
+
+def get_least_loaded_room():
+    return get_least_loaded_room_from(range(1, ScreenSettings.get_room_count() + 1))
+
+
+def get_import_preferred_rooms(parts, mappings):
+    try:
+        parts_number = int(parts)
+    except (TypeError, ValueError):
+        return []
+
+    for mapping in mappings:
+        if parts_number in mapping['juz']:
+            return mapping['rooms']
+
+    return []
+
+
+def get_student_preferred_rooms(student):
+    try:
+        rooms = json.loads(student.preferred_rooms or '[]')
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+
+    if not isinstance(rooms, list):
+        return []
+
+    return rooms
+
+
 @login_required
 @staff_member_required
 def public_screen(request):
@@ -386,13 +466,21 @@ def clear_students(request):
 def apply_automatic_status_for_room(room):
     settings = ScreenSettings.objects.last()
     waiting_limit = settings.waiting_count if settings else 5
-    students = list(Student.objects.filter(room=room).exclude(status='finished').order_by('position'))
+    if parse_room_number(room) is None:
+        return
+
+    students = list(Student.objects.filter(room=room).exclude(status='finished').order_by('position', 'number'))
     late_students = [student for student in students if student.status == 'late']
-    other_students = [student for student in students if student.status != 'late']
+    current_student = next((student for student in students if student.status == 'in_exam'), None)
+    other_students = [
+        student
+        for student in students
+        if student.status != 'late' and student != current_student
+    ]
     new_order = []
 
-    if other_students:
-        new_order.append(other_students.pop(0))
+    if current_student:
+        new_order.append(current_student)
 
     waiting_students = other_students[:waiting_limit]
     new_order.extend(waiting_students)
@@ -404,9 +492,9 @@ def apply_automatic_status_for_room(room):
         student.position = idx
         if student in late_students:
             student.status = 'late'
-        elif idx == 0:
+        elif current_student and student == current_student:
             student.status = 'in_exam'
-        elif 1 <= idx <= waiting_limit:
+        elif student in waiting_students:
             student.status = 'waiting'
         else:
             student.status = 'on_waiting_list'
@@ -417,10 +505,14 @@ def update_student_status(request, student_number):
     if request.method == 'POST':
         student = get_object_or_404(Student, number=student_number)
         new_status = request.POST.get('status')
+        old_room = student.room
 
         if new_status == "remove":
-            student.delete()
             messages.success(request, f"تم حذف الطالب {student.name}")
+            student.delete()
+            if parse_room_number(old_room) is not None:
+                apply_automatic_status_for_room(old_room)
+            return redirect('add_student')
 
         elif new_status.startswith("move:"):
             try:
@@ -442,60 +534,44 @@ def update_student_status(request, student_number):
             student.save()
             messages.success(request, f"تم تحديث حالة الطالب {student.name} إلى {student.get_status_display()}")
 
-        # Always reapply automatic status for the two rooms involved
-        apply_automatic_status_for_room(student.room)
+        if parse_room_number(old_room) is not None:
+            apply_automatic_status_for_room(old_room)
+        if student.pk and student.room != old_room and parse_room_number(student.room) is not None:
+            apply_automatic_status_for_room(student.room)
     
+    return redirect('add_student')
+
+
+@require_POST
+@login_required
+@staff_member_required
+def assign_imported_student(request, student_number):
+    student = get_object_or_404(Student, number=student_number)
+    if parse_room_number(student.room) is not None:
+        return redirect('add_student')
+
+    preferred_rooms = get_student_preferred_rooms(student)
+    assigned_room = get_least_loaded_room_from(preferred_rooms)
+    max_position = (
+        Student.objects.filter(room__in=[str(assigned_room), f'room{assigned_room}'])
+        .aggregate(max_pos=Max('position'))['max_pos']
+    )
+    student.room = str(assigned_room)
+    student.position = (max_position or 0) + 1
+    student.status = 'waiting'
+    student.preferred_rooms = ''
+    student.save()
+    apply_automatic_status_for_room(student.room)
+    messages.success(request, f"تم إدخال {student.name} إلى لجنة {assigned_room}")
     return redirect('add_student')
 
 
 
 def apply_automatic_status():
-    settings = ScreenSettings.objects.last()
-    waiting_limit = settings.waiting_count if settings else 5
-
     rooms = Student.objects.values_list('room', flat=True).distinct()
 
     for room in rooms:
-        students = list(Student.objects.filter(room=room).exclude(status='finished').order_by('position'))
-
-        # Separate late and non-late students
-        late_students = [s for s in students if s.status == 'late']
-        other_students = [s for s in students if s.status != 'late']
-
-        # Combine students into new ordered list
-        # 1 in_exam, then waiting_limit waiting, then all late, then on_waiting_list
-        new_order = []
-
-        # For non-late students, we'll treat them as "waiting pool"
-        # We need to fill: 1 in_exam + waiting_limit waiting + on_waiting_list
-
-        # Assign first student as in_exam (if exists)
-        if other_students:
-            new_order.append(other_students.pop(0))
-
-        # Assign next waiting_limit students as waiting
-        waiting_students = other_students[:waiting_limit]
-        new_order.extend(waiting_students)
-        other_students = other_students[waiting_limit:]  # remaining non-late students
-
-        # Now add all late students (they come after waiting)
-        new_order.extend(late_students)
-
-        # Finally add remaining other_students as on_waiting_list
-        new_order.extend(other_students)
-
-        # Now assign positions and statuses based on this new order
-        for idx, student in enumerate(new_order):
-            student.position = idx
-            if student in late_students:
-                student.status = 'late'
-            elif idx == 0:
-                student.status = 'in_exam'
-            elif 1 <= idx <= waiting_limit:
-                student.status = 'waiting'
-            else:
-                student.status = 'on_waiting_list'
-            student.save()
+        apply_automatic_status_for_room(room)
 
 
 @login_required
@@ -549,11 +625,15 @@ def add_student(request):
 
     all_students = list(Student.objects.all().order_by('room', 'position', 'number'))
     students_by_room = {room: [] for room in rooms}
+    unassigned_students = []
 
     for student in all_students:
         student.room_number = parse_room_number(student.room)
         if student.room_number in students_by_room:
             students_by_room[student.room_number].append(student)
+        elif student.status != 'finished':
+            student.preferred_room_numbers = get_student_preferred_rooms(student)
+            unassigned_students.append(student)
 
     for room_students in students_by_room.values():
         room_students.sort(key=room_sort_key)
@@ -632,6 +712,7 @@ def add_student(request):
         'rooms': rooms,
         'juz_list': juz_list,
         'students_by_room': students_by_room,
+        'unassigned_students': unassigned_students,
         'room_summaries': room_summaries,
         'room_cards': room_cards,
         'search_query': search_query,
@@ -710,7 +791,6 @@ def submit_grade(request, student_number, subroom):
         # Mark student finished
         student.status = 'finished'
         student.save()
-        apply_automatic_status()
         for key in ['locked_student_number', 'locked_room', 'locked_subroom']:
             request.session.pop(key, None)
 
@@ -782,14 +862,10 @@ def upload_excel(request):
         return redirect('add_student')
 
     room_mappings = parse_import_room_mappings(request.POST)
-    mapped_room_counts = Counter()
-
     wb = openpyxl.load_workbook(file)
     sheet = wb.active
 
     current_number = Student.objects.aggregate(Max('number'))['number__max'] or 0
-
-    queue, _ = RoomQueue.objects.get_or_create(pk=1)
 
     for row in sheet.iter_rows(min_row=2, values_only=True):
         if not any(row):
@@ -821,7 +897,8 @@ def upload_excel(request):
 
             current_number += 1
 
-            assigned_room = get_mapped_import_room(parts, room_mappings, mapped_room_counts) or queue.next_room()
+            assigned_room = 'unassigned'
+            preferred_rooms = get_import_preferred_rooms(parts, room_mappings)
 
             Student.objects.create(
                 number=current_number,
@@ -832,13 +909,14 @@ def upload_excel(request):
                 exam_type=exam_type,
                 memorized_parts=parts,
                 room=assigned_room,
+                status='on_waiting_list',
+                preferred_rooms=json.dumps(preferred_rooms) if preferred_rooms else '',
             )
 
         except Exception as e:
             print("Error in row:", row, str(e))
             continue
 
-    apply_automatic_status()
     return redirect('add_student')
 
 

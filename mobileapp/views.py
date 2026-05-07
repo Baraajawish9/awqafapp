@@ -9,7 +9,7 @@ import re
 from django.contrib.auth.models import User
 from django.http import HttpResponse
 from django.conf import settings
-from screen.views import apply_automatic_status, get_current_student_for_room
+from screen.views import get_top_active_student_for_room, parse_room_number
 from django.shortcuts import redirect
 from django.contrib import messages
 from screen.models import ExamResult
@@ -66,9 +66,14 @@ def mark_student_view(request, room_name, student_number, subroom):
 
     room_number = match.group(1)
     student = get_object_or_404(Student, number=student_number, room__in=[room_number, f'room{room_number}'])
-    current_student = get_current_student_for_room(room_number)
-    if not current_student or current_student.number != student.number:
+    top_student = get_top_active_student_for_room(room_number)
+    if not top_student or top_student.number != student.number:
         return redirect('room_view', room_name=room_name, subroom=subroom)
+
+    if student.status != 'in_exam':
+        Student.objects.filter(room__in=[room_number, f'room{room_number}'], status='in_exam').exclude(number=student.number).update(status='waiting')
+        student.status = 'in_exam'
+        student.save(update_fields=['status'])
 
     subroom_results = ExamResult.objects.filter(number=student.number, sub_room__in=['1', '2'])
     grades = [er.grade for er in subroom_results]
@@ -82,7 +87,7 @@ def mark_student_view(request, room_name, student_number, subroom):
     return render(request, 'mobileapp/mark_student.html', {
         'student': student,
         'subroom': subroom,
-        'room_name': f'room{student.room}',
+        'room_name': f'room{parse_room_number(student.room) or room_number}',
         'avg_grade': avg_grade,
         'questions': questions,
     })

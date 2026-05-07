@@ -80,6 +80,23 @@ class RoomBranchQuizTests(TestCase):
         self.assertEqual(current_response.status_code, 200)
         self.assertRedirects(waiting_response, '/rooms/room1/1/', fetch_redirect_response=False)
 
+    def test_room_user_clicking_top_waiting_student_promotes_student(self):
+        student = Student.objects.create(name='Top Waiting Student', room='1', status='waiting', position=1)
+
+        self.client.force_login(self.room1_1)
+        with patch('mobileapp.views.render', return_value=HttpResponse('grade page')):
+            response = self.client.get(
+                reverse('mark_student_view', kwargs={
+                    'room_name': 'room1',
+                    'student_number': student.number,
+                    'subroom': 1,
+                })
+            )
+        student.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(student.status, 'in_exam')
+
     def test_room_user_cannot_submit_grade_for_non_current_student(self):
         Student.objects.create(name='Current Student', room='1', status='in_exam', position=1)
         waiting_student = Student.objects.create(name='Waiting Student', room='1', status='waiting', position=2)
@@ -101,6 +118,7 @@ class RoomBranchQuizTests(TestCase):
             exam_type='gh',
             position=1,
         )
+        next_student = Student.objects.create(name='Next Student', room='1', status='waiting', position=2)
 
         with patch('builtins.open', mock_open()), patch('screen.views.os.path.isfile', return_value=True):
             self.client.force_login(self.room1_1)
@@ -124,5 +142,7 @@ class RoomBranchQuizTests(TestCase):
 
             self.assertRedirects(second_response, '/rooms/room1/2/', fetch_redirect_response=False)
             self.assertEqual(student.status, 'finished')
+            next_student.refresh_from_db()
+            self.assertEqual(next_student.status, 'waiting')
             self.assertEqual(final_result.grade, 90)
             self.assertEqual(ExamResult.objects.filter(number=student.number, sub_room__in=['1', '2']).count(), 2)

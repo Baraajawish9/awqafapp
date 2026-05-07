@@ -64,6 +64,7 @@ class Student(models.Model):
     memorized_parts = models.CharField(max_length=100, verbose_name="الأجزاء المحفوظة", blank=True, null=True)
     grade = models.FloatField(null=True, blank=True)
     mistakes_json = models.TextField(null=True, blank=True)
+    preferred_rooms = models.TextField(null=True, blank=True)
     position = models.PositiveIntegerField(default=0)
     subroom = models.IntegerField(default=1)
 

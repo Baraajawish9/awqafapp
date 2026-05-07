@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 from datetime import datetime, time
 from unittest.mock import patch
 
@@ -77,6 +78,23 @@ class ExportStudentsExcelTests(TestCase):
 
 
 class DashboardLateStatusTests(TestCase):
+    def test_automatic_status_does_not_promote_top_student_to_in_exam(self):
+        User.objects.create_user(username='admin-waiting', password='12345678')
+        ScreenSettings.objects.create(room_count=1, waiting_count=5)
+        students = [
+            Student.objects.create(name='Top Waiting', room='1', status='waiting', position=0),
+            Student.objects.create(name='Second Waiting', room='1', status='on_waiting_list', position=1),
+        ]
+
+        self.client.login(username='admin-waiting', password='12345678')
+        response = self.client.post(reverse('apply_automatic_status'))
+        for student in students:
+            student.refresh_from_db()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(students[0].status, 'waiting')
+        self.assertEqual(students[1].status, 'waiting')
+
     def test_dashboard_late_status_is_preserved_after_reordering(self):
         User.objects.create_user(username='admin-late', password='12345678')
         students = [
@@ -139,7 +157,7 @@ class PublicScreenModeTests(TestCase):
 
 class StudentImportMappingTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='admin-import', password='12345678')
+        self.user = User.objects.create_user(username='admin-import', password='12345678', is_staff=True)
         self.client.force_login(self.user)
         ScreenSettings.objects.create(room_count=4, waiting_count=5)
 
@@ -173,7 +191,7 @@ class StudentImportMappingTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertIsNone(form.cleaned_data['room'])
 
-    def test_upload_excel_accepts_multiple_juz_room_mappings(self):
+    def test_upload_excel_leaves_students_in_assignment_pool(self):
         exam_type_label = next(iter(EXAM_TYPE_MAP.keys()))
         upload = self.make_upload([
             [None, 'Juz One', '', 2010, 'Institute', exam_type_label, 1],
@@ -184,21 +202,65 @@ class StudentImportMappingTests(TestCase):
 
         response = self.client.post(reverse('upload_excel'), {
             'file': upload,
-            'mapping_juz_0': ['1', '2'],
-            'mapping_room_0': ['1'],
-            'mapping_juz_1': ['30'],
-            'mapping_room_1': ['2', '4'],
         })
 
         self.assertEqual(response.status_code, 302)
-        rooms_by_name = {
-            student.name: str(student.room)
+        students_by_name = {
+            student.name: student
             for student in Student.objects.filter(name__startswith='Juz')
         }
 
-        self.assertEqual(rooms_by_name['Juz One'], '1')
-        self.assertEqual(rooms_by_name['Juz Two'], '1')
-        self.assertEqual(
-            {rooms_by_name['Juz Thirty A'], rooms_by_name['Juz Thirty B']},
-            {'2', '4'},
+        self.assertEqual({student.room for student in students_by_name.values()}, {'unassigned'})
+        self.assertEqual({student.status for student in students_by_name.values()}, {'on_waiting_list'})
+
+    def test_upload_excel_keeps_room_preferences_for_later_assignment(self):
+        exam_type_label = next(iter(EXAM_TYPE_MAP.keys()))
+        upload = self.make_upload([
+            [None, 'Preferred Student', '', 2010, 'Institute', exam_type_label, 30],
+        ])
+
+        response = self.client.post(reverse('upload_excel'), {
+            'file': upload,
+            'mapping_juz_0': ['30'],
+            'mapping_room_0': ['2', '4'],
+        })
+        student = Student.objects.get(name='Preferred Student')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(student.room, 'unassigned')
+        self.assertEqual(json.loads(student.preferred_rooms), [2, 4])
+
+    def test_assign_imported_student_moves_one_student_to_a_room(self):
+        student = Student.objects.create(
+            name='Pool Student',
+            room='unassigned',
+            status='on_waiting_list',
+            exam_type='gh',
         )
+
+        response = self.client.post(reverse('assign_imported_student', kwargs={'student_number': student.number}))
+        student.refresh_from_db()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(student.room), {'1', '2', '3', '4'})
+        self.assertEqual(student.status, 'waiting')
+
+    def test_assign_imported_student_balances_within_preferred_rooms(self):
+        for index in range(6):
+            Student.objects.create(name=f'Room 1 Student {index}', room='1', status='waiting', position=index)
+        for index in range(2):
+            Student.objects.create(name=f'Room 2 Student {index}', room='2', status='waiting', position=index)
+        student = Student.objects.create(
+            name='Preferred Pool Student',
+            room='unassigned',
+            status='on_waiting_list',
+            exam_type='gh',
+            preferred_rooms=json.dumps([1, 2]),
+        )
+
+        response = self.client.post(reverse('assign_imported_student', kwargs={'student_number': student.number}))
+        student.refresh_from_db()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(student.room, '2')
+        self.assertEqual(student.preferred_rooms, '')

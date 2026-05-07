@@ -28,7 +28,7 @@
             </nav>
         </header>
 
-        <main class="page">
+        <main class="page" id="dashboardContent">
             <section class="page-header">
                 <div>
                     <p class="page-kicker">لوحة التشغيل</p>
@@ -243,6 +243,36 @@
                         </div>
                     </section>
 
+                    {% if unassigned_students %}
+                        <section class="panel">
+                            <div class="panel-header">
+                                <h2 class="panel-title">طلاب بانتظار التوزيع</h2>
+                            </div>
+                            <div class="panel-body">
+                                <div class="field">
+                                    <label for="assignment-search">بحث ضمن الطلاب المستوردين</label>
+                                    <input id="assignment-search" type="search" data-assignment-search placeholder="اسم الطالب أو رقمه أو المعهد">
+                                </div>
+                                <div class="assignment-pool" data-assignment-pool>
+                                    {% for student in unassigned_students %}
+                                        <form class="student-tile assignment-student" method="post" action="{% url 'assign_imported_student' student.number %}" data-assignment-student data-search-text="{{ student.number }} {{ student.name }} {{ student.father_name }} {{ student.institute_name }}">
+                                            {% csrf_token %}
+                                            <div class="student-row assignment-main-row">
+                                                <span class="student-number">{{ student.number }}</span>
+                                                <button type="submit" class="assignment-name-button">{{ student.name }}</button>
+                                            </div>
+                                            <div class="student-row assignment-meta-row">
+                                                {% if student.institute_name %}
+                                                    <span class="student-muted">{{ student.institute_name }}</span>
+                                                {% endif %}
+                                            </div>
+                                        </form>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </section>
+                    {% endif %}
+
                     <section class="panel">
                         <div class="panel-header">
                             <h2 class="panel-title">ملخص اللجان</h2>
@@ -300,7 +330,7 @@
                                                     </div>
                                                     <form method="post" action="{% url 'update_student_status' student.number %}">
                                                         {% csrf_token %}
-                                                        <select class="student-status-select" name="status" onchange="this.form.submit()">
+                                                        <select class="student-status-select" name="status" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
                                                             {% for val, label in status_choices %}
                                                                 <option value="{{ val }}" {% if student.status == val %}selected{% endif %}>{{ label }}</option>
                                                             {% endfor %}
@@ -333,6 +363,7 @@
             const list = document.getElementById('importMappingList');
             const addButton = document.getElementById('addImportMapping');
             if (!list || !addButton) return;
+            list.dataset.mappingReady = '1';
 
             let nextIndex = list.querySelectorAll('[data-mapping-row]').length;
 
@@ -401,6 +432,218 @@
 
             refreshRemoveButtons();
             refreshAllDropdowns();
+        })();
+    </script>
+    <script>
+        (function () {
+            function initImportMapping(root) {
+                const list = root.querySelector('#importMappingList');
+                const addButton = root.querySelector('#addImportMapping');
+                if (!list || !addButton || list.dataset.mappingReady === '1') return;
+                list.dataset.mappingReady = '1';
+
+                let nextIndex = list.querySelectorAll('[data-mapping-row]').length;
+
+                function refreshDropdown(dropdown) {
+                    const count = dropdown.querySelectorAll('input[type="checkbox"]:checked').length;
+                    const countEl = dropdown.querySelector('[data-selected-count]');
+                    if (countEl) countEl.textContent = String(count);
+                }
+
+                function refreshRemoveButtons() {
+                    const rows = list.querySelectorAll('[data-mapping-row]');
+                    rows.forEach(function (row) {
+                        const removeButton = row.querySelector('[data-remove-mapping]');
+                        if (removeButton) removeButton.disabled = rows.length === 1;
+                    });
+                }
+
+                addButton.addEventListener('click', function () {
+                    const firstRow = list.querySelector('[data-mapping-row]');
+                    if (!firstRow) return;
+
+                    const row = firstRow.cloneNode(true);
+                    row.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+                        input.name = input.name.replace(/\d+$/, String(nextIndex));
+                        input.checked = false;
+                    });
+                    row.querySelectorAll('[data-multi-dropdown]').forEach(function (dropdown) {
+                        dropdown.open = false;
+                        refreshDropdown(dropdown);
+                    });
+                    nextIndex += 1;
+                    list.appendChild(row);
+                    refreshRemoveButtons();
+                });
+
+                list.addEventListener('click', function (event) {
+                    const removeButton = event.target.closest('[data-remove-mapping]');
+                    if (!removeButton) return;
+
+                    const rows = list.querySelectorAll('[data-mapping-row]');
+                    if (rows.length <= 1) return;
+
+                    removeButton.closest('[data-mapping-row]').remove();
+                    refreshRemoveButtons();
+                });
+
+                list.addEventListener('change', function (event) {
+                    const input = event.target.closest('input[type="checkbox"]');
+                    if (!input) return;
+
+                    const dropdown = input.closest('[data-multi-dropdown]');
+                    if (dropdown) refreshDropdown(dropdown);
+                });
+
+                refreshRemoveButtons();
+                list.querySelectorAll('[data-multi-dropdown]').forEach(refreshDropdown);
+            }
+
+            function initAssignmentSearch(root) {
+                const input = root.querySelector('[data-assignment-search]');
+                const students = Array.from(root.querySelectorAll('[data-assignment-student]'));
+                if (!input || input.dataset.searchReady === '1') return;
+                input.dataset.searchReady = '1';
+
+                input.addEventListener('input', function () {
+                    const query = input.value.trim().toLowerCase();
+                    students.forEach(function (student) {
+                        const text = (student.dataset.searchText || '').toLowerCase();
+                        student.hidden = query && !text.includes(query);
+                    });
+                });
+            }
+
+            function initLiveFilters(root) {
+                const form = root.querySelector('.admin-filter-form');
+                if (!form || form.dataset.liveReady === '1') return;
+                form.dataset.liveReady = '1';
+
+                const search = form.querySelector('input[name="q"]');
+                const selects = form.querySelectorAll('select');
+                let timer = null;
+
+                function scheduleSubmit(delay) {
+                    window.clearTimeout(timer);
+                    timer = window.setTimeout(function () {
+                        submitWithAjax(form);
+                    }, delay);
+                }
+
+                if (search) {
+                    search.addEventListener('input', function () {
+                        scheduleSubmit(300);
+                    });
+                }
+
+                selects.forEach(function (select) {
+                    select.addEventListener('change', function () {
+                        scheduleSubmit(0);
+                    });
+                });
+            }
+
+            function replaceDashboardFrom(html, nextUrl) {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextDashboard = doc.getElementById('dashboardContent');
+                const dashboard = document.getElementById('dashboardContent');
+                if (!nextDashboard || !dashboard) return false;
+
+                const focused = document.activeElement;
+                const focusedId = focused && focused.id;
+                const selectionStart = focused && typeof focused.selectionStart === 'number' ? focused.selectionStart : null;
+                const selectionEnd = focused && typeof focused.selectionEnd === 'number' ? focused.selectionEnd : null;
+
+                dashboard.innerHTML = nextDashboard.innerHTML;
+                if (nextUrl && nextUrl !== window.location.href) {
+                    history.replaceState(null, '', nextUrl);
+                }
+                initDashboard();
+
+                if (focusedId) {
+                    const nextFocused = document.getElementById(focusedId);
+                    if (nextFocused) {
+                        nextFocused.focus();
+                        if (selectionStart !== null && selectionEnd !== null && typeof nextFocused.setSelectionRange === 'function') {
+                            nextFocused.setSelectionRange(selectionStart, selectionEnd);
+                        }
+                    }
+                }
+                return true;
+            }
+
+            function submitWithAjax(form, submitter) {
+                const method = (form.method || 'get').toUpperCase();
+                let url = form.action || window.location.href;
+                const options = {
+                    method: method,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    cache: 'no-store'
+                };
+
+                if (method === 'GET') {
+                    const params = new URLSearchParams(new FormData(form));
+                    url = url.split('?')[0] + '?' + params.toString();
+                } else {
+                    const formData = new FormData(form);
+                    if (submitter && submitter.name && !formData.has(submitter.name)) {
+                        formData.append(submitter.name, submitter.value || '');
+                    }
+                    options.body = formData;
+                }
+
+                return fetch(url, options)
+                    .then(function (response) {
+                        return response.text().then(function (html) {
+                            replaceDashboardFrom(html, response.url || url);
+                        });
+                    })
+                    .catch(function () {
+                        form.submit();
+                    });
+            }
+
+            function initDashboard() {
+                const dashboard = document.getElementById('dashboardContent');
+                if (!dashboard) return;
+
+                initImportMapping(dashboard);
+                initAssignmentSearch(dashboard);
+                initLiveFilters(dashboard);
+
+                if (dashboard.dataset.ajaxReady === '1') return;
+                dashboard.dataset.ajaxReady = '1';
+
+                dashboard.addEventListener('submit', function (event) {
+                    const form = event.target.closest('form');
+                    if (!form || form.id === 'export-form' || form.classList.contains('logout-form')) return;
+
+                    event.preventDefault();
+                    submitWithAjax(form, event.submitter);
+                });
+
+                dashboard.addEventListener('click', function (event) {
+                    const link = event.target.closest('a');
+                    if (!link || link.target || link.hasAttribute('download')) return;
+                    if (link.origin !== window.location.origin || !link.closest('.room-summary-grid, .panel-header')) return;
+
+                    event.preventDefault();
+                    fetch(link.href, {
+                        headers: {'X-Requested-With': 'XMLHttpRequest'},
+                        cache: 'no-store'
+                    })
+                        .then(function (response) {
+                            return response.text().then(function (html) {
+                                replaceDashboardFrom(html, response.url || link.href);
+                            });
+                        })
+                        .catch(function () {
+                            window.location.href = link.href;
+                        });
+                });
+            }
+
+            initDashboard();
         })();
     </script>
 </body>

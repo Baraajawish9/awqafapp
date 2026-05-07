@@ -579,6 +579,88 @@ textarea:focus {
   font-weight: 900;
 }
 
+.student-muted {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignment-pool {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.assignment-student {
+  position: relative;
+  gap: 10px;
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+  background: linear-gradient(180deg, var(--surface), var(--surface-strong));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.assignment-student:hover,
+.assignment-student:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+  box-shadow: 0 8px 24px rgba(22, 33, 27, 0.1);
+  transform: translateY(-1px);
+}
+
+.assignment-student[hidden] {
+  display: none;
+}
+
+.assignment-main-row {
+  align-items: flex-start;
+}
+
+.assignment-name-button {
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: auto;
+  flex: 1 1 auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--primary);
+  box-shadow: none;
+  text-align: start;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.assignment-name-button:hover,
+.assignment-name-button:focus-visible {
+  background: transparent;
+  color: var(--primary-strong);
+  text-decoration: underline;
+}
+
+.assignment-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.assignment-preference {
+  justify-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .move-actions {
   display: flex;
   gap: 4px;

@@ -34,13 +34,13 @@
 
         <section class="queue-list">
             {% for student in students %}
-                <article class="queue-item {% if student.status == 'in_exam' %}is-actionable{% endif %}">
+                <article class="queue-item {% if forloop.first %}is-actionable{% endif %}">
                     <div class="student-row">
                         <span class="student-number">{{ student.number }}</span>
                         <span class="status-chip status-{{ student.status }}">{{ student.get_status_display }}</span>
                     </div>
                     <h2 class="panel-title">
-                        {% if student.status == 'in_exam' %}
+                        {% if forloop.first %}
                             <a class="queue-link" href="{% url 'mark_student_view' room_name=room_name subroom=subroom student_number=student.number %}">{{ student.name }}</a>
                         {% else %}
                             {{ student.name }}
@@ -57,9 +57,37 @@
     </main>
 
     <script>
-        setTimeout(function () {
-            location.reload();
-        }, 5000);
+        (function () {
+            const queueSelector = '.queue-list';
+            let loading = false;
+
+            function refreshQueue() {
+                if (loading) return;
+                loading = true;
+
+                fetch(window.location.href, {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    cache: 'no-store'
+                })
+                    .then(function (response) {
+                        return response.text();
+                    })
+                    .then(function (html) {
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        const nextQueue = doc.querySelector(queueSelector);
+                        const currentQueue = document.querySelector(queueSelector);
+                        if (nextQueue && currentQueue) {
+                            currentQueue.innerHTML = nextQueue.innerHTML;
+                        }
+                    })
+                    .catch(function () {})
+                    .finally(function () {
+                        loading = false;
+                    });
+            }
+
+            setInterval(refreshQueue, 5000);
+        })();
     </script>
 </body>
 </html>

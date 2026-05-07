@@ -20,6 +20,7 @@ urlpatterns = [
     path('students/clear/', screen_views.clear_students, name='clear_students'),
     path('students/<int:student_number>/remove/', screen_views.remove_student, name='remove_student'),
     path('students/<int:student_number>/status/', screen_views.update_student_status, name='update_student_status'),
+    path('students/<int:student_number>/assign/', screen_views.assign_imported_student, name='assign_imported_student'),
     path('students/<int:number>/move/', screen_views.move_student_position, name='move_student_position'),
     path('results/clear/', screen_views.clear_all_results, name='clear_all_results'),
     path('status/apply/', screen_views.trigger_automatic_status, name='apply_automatic_status'),

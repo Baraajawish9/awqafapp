@@ -31,6 +31,30 @@ class RoomBranchQuizTests(TestCase):
             self.assertContains(branch_two, 'First Student')
             self.assertContains(branch_two, 'Second Student')
 
+    def test_room_view_stays_single_live_queue_without_result_pages(self):
+        for index in range(7):
+            Student.objects.create(name=f'Queue Student {index + 1}', room='1', status='waiting', position=index)
+        ExamResult.objects.create(
+            number=90,
+            name='Recent Result',
+            grade=94,
+            result='ناجح',
+            room=1,
+            sub_room='0',
+        )
+
+        def capture_room_context(request, template_name, context):
+            self.assertNotIn('queue_pages', context)
+            self.assertNotIn('result_pages', context)
+            self.assertEqual(len(context['students']), 7)
+            return HttpResponse('room context captured')
+
+        self.client.force_login(self.room1_1)
+        with patch('mobileapp.views.render', side_effect=capture_room_context):
+            response = self.client.get(reverse('room_view', kwargs={'room_name': 'room1', 'subroom': 1}))
+
+        self.assertEqual(response.status_code, 200)
+
     def test_plain_room_login_is_rejected(self):
         User.objects.create_user(username='room1', password='12345678')
 

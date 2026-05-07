@@ -48,9 +48,15 @@ class ScreenSettingsForm(forms.ModelForm):
         required=True
     )
 
+    result_display_seconds = forms.IntegerField(
+        label="مدة عرض النتيجة على شاشة اللجنة (ثانية)",
+        min_value=1,
+        required=True,
+    )
+
     class Meta:
         model = ScreenSettings
-        fields = ['room_count', 'waiting_count', 'estimate_time_per_student', 'exam_start_time', 'public_screen_mode']
+        fields = ['room_count', 'waiting_count', 'estimate_time_per_student', 'exam_start_time', 'result_display_seconds', 'public_screen_mode']
         labels = {
             'room_count': 'عدد اللجان',
             'waiting_count': 'عدد الطلاب في الانتظار',

@@ -18,6 +18,7 @@ from django.shortcuts import render
 from django.db.models import Avg
 from screen.models import Student
 
+
 @login_required
 def room_view(request, room_name, subroom):
     match = re.match(r'room(\d+)', room_name)

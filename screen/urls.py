@@ -11,6 +11,8 @@ urlpatterns = [
     path('remove-student/<int:student_number>/', views.remove_student, name='legacy_remove_student'),
     path('update-status/<int:student_number>/', views.update_student_status, name='legacy_update_student_status'),
     path('assign-student/<int:student_number>/', views.assign_imported_student, name='legacy_assign_imported_student'),
+    path('assign-all-imported/', views.assign_all_imported_students, name='legacy_assign_all_imported_students'),
+    path('remove-all-imported/', views.remove_all_imported_students, name='legacy_remove_all_imported_students'),
 
     # Legacy grade submission
     path('submit-grade/<int:student_number>/', views.submit_grade, name='legacy_screen_submit_grade'),

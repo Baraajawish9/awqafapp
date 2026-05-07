@@ -1,6 +1,6 @@
 from io import BytesIO
 import json
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -13,7 +13,7 @@ from openpyxl import Workbook, load_workbook
 
 from screen.forms import StudentForm
 from screen.models import ExamResult, ScreenSettings, Student
-from screen.views import EXAM_TYPE_MAP
+from screen.views import EXAM_TYPE_MAP, parse_room_number
 
 
 class ExportStudentsExcelTests(TestCase):
@@ -76,6 +76,37 @@ class ExportStudentsExcelTests(TestCase):
         self.assertNotIn('الدرجة', header_row)
         self.assertNotIn('النتيجة', header_row)
 
+    def test_export_uses_one_estimated_time_range_for_group(self):
+        ScreenSettings.objects.create(
+            room_count=1,
+            waiting_count=5,
+            estimate_time_per_student=3,
+            exam_start_time=time(7, 30),
+        )
+        for index in range(30):
+            Student.objects.create(
+                name=f'Range Student {index + 1}',
+                institute_name='Institute Range',
+                exam_type='gh',
+                room='1',
+                position=index,
+            )
+
+        response = self.client.get(reverse('export_students_excel'), {
+            'institute': 'Institute Range',
+            'include_grade': '0',
+        })
+
+        workbook = load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        student_rows = [
+            row for row in sheet.iter_rows(values_only=True)
+            if row and isinstance(row[1], str) and row[1].startswith('Range Student')
+        ]
+
+        self.assertEqual(len(student_rows), 30)
+        self.assertEqual({row[7] for row in student_rows}, {'07:30 - 09:00'})
+
 
 class DashboardLateStatusTests(TestCase):
     def test_automatic_status_does_not_promote_top_student_to_in_exam(self):
@@ -114,7 +145,114 @@ class DashboardLateStatusTests(TestCase):
         self.assertEqual(students[1].status, 'late')
 
 
+class ScreenSettingsRoomUserTests(TestCase):
+    def test_saving_room_count_creates_branch_logins(self):
+        user = User.objects.create_user(username='settings-admin', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(room_count=10, waiting_count=5)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse('edit_settings'), {
+            'room_count': 15,
+            'waiting_count': 5,
+            'estimate_time_per_student': 5,
+            'exam_start_time': '07:00',
+            'result_display_seconds': 30,
+            'public_screen_mode': 'rooms',
+        })
+
+        self.assertRedirects(response, reverse('add_student'), fetch_redirect_response=False)
+        self.assertTrue(User.objects.filter(username='room15-1', is_active=True).exists())
+        self.assertTrue(User.objects.filter(username='room15-2', is_active=True).exists())
+
+    def test_saving_room_count_does_not_reset_existing_room_passwords(self):
+        room_user = User.objects.create_user(username='room1-1', password='custom-pass')
+        user = User.objects.create_user(username='settings-admin-password', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(room_count=1, waiting_count=5)
+        self.client.force_login(user)
+
+        response = self.client.post(reverse('edit_settings'), {
+            'room_count': 2,
+            'waiting_count': 5,
+            'estimate_time_per_student': 5,
+            'exam_start_time': '07:00',
+            'result_display_seconds': 30,
+            'public_screen_mode': 'rooms',
+        })
+
+        room_user.refresh_from_db()
+        self.assertRedirects(response, reverse('add_student'), fetch_redirect_response=False)
+        self.assertTrue(room_user.check_password('custom-pass'))
+        self.assertTrue(User.objects.get(username='room2-1').check_password('12345678'))
+
+
 class PublicScreenModeTests(TestCase):
+    def test_rooms_mode_adds_recent_finished_results_as_extra_group(self):
+        user = User.objects.create_user(username='screen-results-admin', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(
+            room_count=1,
+            waiting_count=5,
+            estimate_time_per_student=5,
+            exam_start_time=time(8, 0),
+            result_display_seconds=30,
+            public_screen_mode='rooms',
+        )
+        finished_student = Student.objects.create(name='Finished Student', room='1', status='finished', position=0)
+        retry_student = Student.objects.create(name='Retry Student', room='1', status='finished', position=1)
+        expired_student = Student.objects.create(name='Expired Student', room='1', status='finished', position=2)
+        waiting_student = Student.objects.create(name='Waiting Student', room='1', status='waiting', position=2)
+        ExamResult.objects.create(
+            number=finished_student.number,
+            name=finished_student.name,
+            grade=100,
+            result='ناجح',
+            room=1,
+            sub_room='0',
+        )
+        retry_result = ExamResult.objects.create(
+            number=retry_student.number,
+            name=retry_student.name,
+            grade=70,
+            result='إعادة',
+            room=1,
+            sub_room='0',
+        )
+        expired_result = ExamResult.objects.create(
+            number=expired_student.number,
+            name=expired_student.name,
+            grade=60,
+            result='إعادة',
+            room=1,
+            sub_room='0',
+        )
+        ExamResult.objects.filter(id=expired_result.id).update(timestamp=make_aware(datetime.now() - timedelta(seconds=31), timezone=get_current_timezone()))
+        captured = {}
+
+        def capture_render(request, template_name, context):
+            captured.update(context)
+            return HttpResponse('ok')
+
+        self.client.force_login(user)
+        with patch('screen.views.render', side_effect=capture_render):
+            response = self.client.get(reverse('public_screen'))
+
+        room_students = captured['room_pages'][0]['rooms'][0]['students']
+        room_card = captured['room_pages'][0]['rooms'][0]
+        waiting = next(student for student in room_students if student.number == waiting_student.number)
+        result_names = [student.name for student in room_students if getattr(student, 'status', '') == 'finished']
+        retry = next(student for student in room_students if student.number == retry_student.number)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(finished_student.name, result_names)
+        self.assertIn(retry_student.name, result_names)
+        self.assertNotIn(expired_student.name, result_names)
+        self.assertEqual(room_card['active_count'], 1)
+        self.assertEqual(room_card['result_count'], 2)
+        self.assertEqual(room_card['total_count'], 3)
+        self.assertEqual(retry_result.result, 'إعادة')
+        self.assertEqual(retry.latest_result_class, 'retry')
+        self.assertEqual(captured['room_page_count'], 1)
+        self.assertEqual(waiting.estimated_time, '8:00 AM')
+
     def test_window_mode_shows_students_in_next_15_minutes(self):
         user = User.objects.create_user(username='screen-admin', password='12345678', is_staff=True)
         ScreenSettings.objects.create(
@@ -150,9 +288,53 @@ class PublicScreenModeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(captured['screen_mode'], 'window')
-        self.assertEqual(visible_numbers, [student.number for student in students[2:6]])
-        self.assertEqual(captured['schedule_window_start'], '08:10')
-        self.assertEqual(captured['schedule_window_end'], '08:25')
+        self.assertEqual(visible_numbers, [student.number for student in students[:4]])
+        self.assertEqual(captured['schedule_window_start'], '08:00')
+        self.assertEqual(captured['schedule_window_end'], '08:15')
+
+    def test_window_mode_shifts_queue_and_shows_recent_finished_results(self):
+        user = User.objects.create_user(username='screen-window-results-admin', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(
+            room_count=1,
+            waiting_count=5,
+            estimate_time_per_student=5,
+            exam_start_time=time(7, 30),
+            result_display_seconds=30,
+            public_screen_mode='window',
+        )
+        Student.objects.create(name='Finished Student', room='1', status='finished', position=0)
+        active_students = [
+            Student.objects.create(name=f'Active Student {idx}', room='1', status='waiting', position=idx + 1)
+            for idx in range(4)
+        ]
+        finished_student = Student.objects.get(name='Finished Student')
+        ExamResult.objects.create(
+            number=finished_student.number,
+            name=finished_student.name,
+            grade=100,
+            result='ناجح',
+            room=1,
+            sub_room='0',
+        )
+        captured = {}
+
+        def capture_render(request, template_name, context):
+            captured.update(context)
+            return HttpResponse('ok')
+
+        self.client.force_login(user)
+        with patch('screen.views.render', side_effect=capture_render):
+            response = self.client.get(reverse('public_screen'))
+
+        active_numbers = [student.number for student in captured['schedule_students'] if not getattr(student, 'is_result', False)]
+        result_rows = [student for student in captured['schedule_students'] if getattr(student, 'is_result', False)]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(active_numbers, [student.number for student in active_students])
+        self.assertEqual(captured['schedule_window_start'], '07:30')
+        self.assertEqual(captured['schedule_window_end'], '07:45')
+        self.assertEqual(len(result_rows), 1)
+        self.assertEqual(result_rows[0].display_status, '100 - ناجح')
 
 
 class StudentImportMappingTests(TestCase):
@@ -264,3 +446,30 @@ class StudentImportMappingTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(student.room, '2')
         self.assertEqual(student.preferred_rooms, '')
+
+    def test_assign_all_imported_students_moves_entire_assignment_pool(self):
+        students = [
+            Student.objects.create(name=f'Bulk Pool Student {index}', room='unassigned', status='on_waiting_list')
+            for index in range(3)
+        ]
+        Student.objects.create(name='Already Assigned', room='1', status='waiting')
+
+        response = self.client.post(reverse('assign_all_imported_students'))
+        for student in students:
+            student.refresh_from_db()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Student.objects.filter(room='unassigned').exists())
+        self.assertEqual({student.status for student in students}, {'waiting'})
+        self.assertTrue(all(parse_room_number(student.room) in {1, 2, 3, 4} for student in students))
+
+    def test_remove_all_imported_students_deletes_only_assignment_pool(self):
+        Student.objects.create(name='Pool Remove One', room='unassigned', status='on_waiting_list')
+        Student.objects.create(name='Pool Remove Two', room='unassigned', status='on_waiting_list')
+        assigned = Student.objects.create(name='Keep Assigned', room='1', status='waiting')
+
+        response = self.client.post(reverse('remove_all_imported_students'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Student.objects.filter(room='unassigned').exists())
+        self.assertTrue(Student.objects.filter(number=assigned.number).exists())

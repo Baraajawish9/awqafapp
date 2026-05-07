@@ -19,9 +19,9 @@
                 <h1>طلاب الفترة الحالية</h1>
             </div>
             <div class="tv-page-indicator tv-window-indicator">
-                <span>{{ schedule_window_start }}</span>
+                <span id="tvWindowStart">{{ schedule_window_start }}</span>
                 <span>-</span>
-                <span>{{ schedule_window_end }}</span>
+                <span id="tvWindowEnd">{{ schedule_window_end }}</span>
             </div>
             <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
         </header>
@@ -36,14 +36,14 @@
             <div class="tv-window-board-list" id="tvWindowBoardList">
                 <div class="tv-window-board-track" id="tvWindowBoardTrack">
             {% for student in schedule_students %}
-                <article class="tv-window-board-row tv-window-board-row-strong status-{{ student.status }}">
+                <article class="tv-window-board-row tv-window-board-row-strong status-{{ student.status }} {% if student.is_result %}tv-result-{{ student.result_class }}{% endif %}">
                     <span class="tv-window-board-time">{{ student.scheduled_time }}</span>
                     <span class="tv-window-board-name">
                         <span class="tv-window-board-number">{{ student.number }}</span>
                         <span>{{ student.name }}</span>
                     </span>
                     <span class="tv-window-board-room">لجنة {{ student.room_number }}</span>
-                    <span class="tv-window-board-status">{{ student.get_status_display }}</span>
+                    <span class="tv-window-board-status">{% if student.is_result %}{{ student.display_status }}{% else %}{{ student.get_status_display }}{% endif %}</span>
                 </article>
             {% empty %}
                 <div class="tv-window-empty">لا يوجد طلاب ضمن الفترة الحالية</div>
@@ -65,13 +65,17 @@
         (function () {
             const stage = document.querySelector('.tv-window-stage');
             const list = document.getElementById('tvWindowBoardList');
-            const track = document.getElementById('tvWindowBoardTrack');
+            let track = document.getElementById('tvWindowBoardTrack');
+            const windowStart = document.getElementById('tvWindowStart');
+            const windowEnd = document.getElementById('tvWindowEnd');
+            const refreshMs = parseInt(stage.dataset.refreshMs || '30000', 10);
             const pauseMs = 650;
             const speedPxPerSecond = 95;
             let direction = 1;
             let pauseUntil = Date.now() + pauseMs;
             let lastTick = Date.now();
             let offset = 0;
+            let isRefreshing = false;
 
             function tickScroll() {
                 if (!list || !track) return;
@@ -106,7 +110,42 @@
                 track.style.transform = 'translateY(-' + offset.toFixed(2) + 'px)';
             }
 
+            function refreshWindowBoard() {
+                if (isRefreshing) return;
+                isRefreshing = true;
+
+                fetch(window.location.href, {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    cache: 'no-store'
+                })
+                    .then(function (response) {
+                        return response.text();
+                    })
+                    .then(function (html) {
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        const nextTrack = doc.getElementById('tvWindowBoardTrack');
+                        const nextStart = doc.getElementById('tvWindowStart');
+                        const nextEnd = doc.getElementById('tvWindowEnd');
+
+                        if (nextTrack && track) {
+                            track.innerHTML = nextTrack.innerHTML;
+                            track.style.transform = 'translateY(0)';
+                            offset = 0;
+                            direction = 1;
+                            pauseUntil = Date.now() + pauseMs;
+                            lastTick = Date.now();
+                        }
+                        if (nextStart && windowStart) windowStart.textContent = nextStart.textContent;
+                        if (nextEnd && windowEnd) windowEnd.textContent = nextEnd.textContent;
+                    })
+                    .catch(function () {})
+                    .finally(function () {
+                        isRefreshing = false;
+                    });
+            }
+
             setInterval(tickScroll, 16);
+            setInterval(refreshWindowBoard, refreshMs);
         })();
     </script>
     {% else %}
@@ -142,16 +181,22 @@
                                     <span class="tv-room-title">لجنة {{ room.number }}</span>
                                 </header>
 
-                                <div class="tv-compact-list" data-total="{{ room.total_count }}">
+                                <div class="tv-compact-list"
+                                     data-total="{{ room.total_count }}"
+                                     data-active-total="{{ room.active_count }}"
+                                     data-result-total="{{ room.result_count }}">
                                     {% for student in room.students %}
                                         <div class="tv-compact-student status-{{ student.status }}" data-student-index="{{ forloop.counter0 }}">
                                             <span class="tv-compact-main">
                                                 <span class="tv-compact-name">{{ student.number }} - {{ student.name }}</span>
-                                                {% if student.estimated_time %}
+                                                {% if student.status == 'finished' and student.latest_grade is not None %}
+                                                    <span class="tv-compact-result tv-result-{{ student.latest_result_class }}">{{ student.latest_grade|floatformat:1 }} - {{ student.latest_result }}</span>
+                                                {% elif student.estimated_time %}
                                                     <span class="tv-compact-time">{{ student.estimated_time }}</span>
                                                 {% endif %}
                                             </span>
-                                            {% if student.latest_grade %}
+                                            {% if student.status == 'finished' and student.latest_grade is not None %}
+                                            {% elif student.latest_grade is not None %}
                                                 <span class="tv-compact-meta">{{ student.latest_grade }} - {{ student.latest_result }}</span>
                                             {% elif student.status == 'waiting' or student.status == 'on_waiting_list' %}
                                                 <span class="tv-compact-meta">{{ student.get_status_display }}</span>
@@ -255,25 +300,48 @@
 
             function getLargestStudentTotal(page) {
                 const totals = Array.from(page.querySelectorAll('.tv-compact-list')).map(function (list) {
-                    return parseInt(list.dataset.total || '0', 10);
+                    return parseInt(list.dataset.activeTotal || list.dataset.total || '0', 10);
                 });
                 return Math.max.apply(null, totals.concat([0]));
             }
 
+            function getListMaxSlices(list, visibleStudents) {
+                const activeTotal = parseInt(list.dataset.activeTotal || list.dataset.total || '0', 10);
+                const resultTotal = parseInt(list.dataset.resultTotal || '0', 10);
+                const activeSlices = activeTotal > 0 ? Math.min(maxStudentGroups, Math.ceil(activeTotal / visibleStudents)) : 0;
+                const resultSlices = resultTotal > 0 ? Math.ceil(resultTotal / visibleStudents) : 0;
+                return Math.max(1, activeSlices + resultSlices);
+            }
+
             function getMaxSlices(page, visibleStudents) {
-                const largestTotal = getLargestStudentTotal(page);
-                return Math.min(maxStudentGroups, Math.max(1, Math.ceil(largestTotal / visibleStudents)));
+                const slices = Array.from(page.querySelectorAll('.tv-compact-list')).map(function (list) {
+                    return getListMaxSlices(list, visibleStudents);
+                });
+                return Math.max.apply(null, slices.concat([1]));
             }
 
             function updateRoomSlices(page, nextSliceIndex) {
                 const visibleStudents = getVisibleStudentCount(page);
                 const maxSlices = getMaxSlices(page, visibleStudents);
                 const safeSliceIndex = nextSliceIndex % maxSlices;
-                const start = safeSliceIndex * visibleStudents;
-                const end = start + visibleStudents;
+                let showingResults = false;
 
                 page.querySelectorAll('.tv-compact-list').forEach(function (list) {
                     const students = Array.from(list.querySelectorAll('.tv-compact-student'));
+                    const activeTotal = parseInt(list.dataset.activeTotal || list.dataset.total || '0', 10);
+                    const resultTotal = parseInt(list.dataset.resultTotal || '0', 10);
+                    const activeSlices = activeTotal > 0 ? Math.min(maxStudentGroups, Math.ceil(activeTotal / visibleStudents)) : 0;
+                    let start = safeSliceIndex * visibleStudents;
+                    let end = start + visibleStudents;
+
+                    if (safeSliceIndex >= activeSlices) {
+                        const resultSliceIndex = safeSliceIndex - activeSlices;
+                        start = activeTotal + resultSliceIndex * visibleStudents;
+                        end = start + visibleStudents;
+                        if (resultTotal > 0 && start < activeTotal + resultTotal) {
+                            showingResults = true;
+                        }
+                    }
 
                     students.forEach(function (student, studentIndex) {
                         student.classList.toggle('is-visible', studentIndex >= start && studentIndex < end);
@@ -282,11 +350,16 @@
 
                 currentSet.textContent = maxSlices > 1 ? 'مجموعة ' + (safeSliceIndex + 1) + '/' + maxSlices : '';
                 if (currentTimeRange) {
-                    const largestTotal = getLargestStudentTotal(page);
-                    const displayTotal = largestTotal ? Math.min(largestTotal, visibleStudents * maxSlices) : visibleStudents * maxSlices;
-                    const rangeStart = examStartMinutes;
-                    const rangeEnd = examStartMinutes + displayTotal * estimateMinutes;
-                    currentTimeRange.textContent = formatRange(rangeStart, rangeEnd);
+                    if (showingResults) {
+                        currentTimeRange.textContent = 'نتائج';
+                    } else {
+                        const largestTotal = getLargestStudentTotal(page);
+                        const activeSlices = Math.min(maxStudentGroups, Math.max(1, Math.ceil(largestTotal / visibleStudents)));
+                        const displayTotal = largestTotal ? Math.min(largestTotal, visibleStudents * activeSlices) : visibleStudents * activeSlices;
+                        const rangeStart = examStartMinutes;
+                        const rangeEnd = examStartMinutes + displayTotal * estimateMinutes;
+                        currentTimeRange.textContent = formatRange(rangeStart, rangeEnd);
+                    }
                 }
                 sliceIndex = safeSliceIndex;
             }

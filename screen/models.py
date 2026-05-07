@@ -100,6 +100,7 @@ class ScreenSettings(models.Model):
     waiting_count = models.IntegerField(default=5)
     estimate_time_per_student = models.IntegerField(default=5)  # <--- ADD THIS
     exam_start_time = models.TimeField(default="07:00")  # default 7 AM
+    result_display_seconds = models.IntegerField(default=30)
     public_screen_mode = models.CharField(max_length=20, choices=SCREEN_MODE_CHOICES, default='rooms')
 
     @classmethod

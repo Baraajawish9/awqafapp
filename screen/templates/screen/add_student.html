@@ -249,6 +249,16 @@
                                 <h2 class="panel-title">طلاب بانتظار التوزيع</h2>
                             </div>
                             <div class="panel-body">
+                                <div class="form-actions assignment-bulk-actions">
+                                    <form method="post" action="{% url 'assign_all_imported_students' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="secondary">توزيع كل الطلاب</button>
+                                    </form>
+                                    <form method="post" action="{% url 'remove_all_imported_students' %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="danger" onclick="return confirm('هل تريد حذف كل الطلاب بانتظار التوزيع؟');">حذف كل الطلاب</button>
+                                    </form>
+                                </div>
                                 <div class="field">
                                     <label for="assignment-search">بحث ضمن الطلاب المستوردين</label>
                                     <input id="assignment-search" type="search" data-assignment-search placeholder="اسم الطالب أو رقمه أو المعهد">

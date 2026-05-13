@@ -1,0 +1,68 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme-scope="dashboard">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تواصل معنا</title>
+    <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=contact-page-2">
+    <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
+</head>
+<body>
+    <main class="contact-page">
+        <div class="contact-shell">
+            <header class="contact-hero">
+                <div>
+                    <p class="page-kicker">الدعم والمساعدة</p>
+                    <h1 class="page-title">تواصل معنا</h1>
+                    <p class="page-note">للاستفسارات أو الملاحظات على النظام، اختر طريقة التواصل المناسبة وسيتم فتحها مباشرة.</p>
+                </div>
+                <div class="contact-actions">
+                    {% if user.is_authenticated %}
+                        <a class="button secondary" href="{% url 'add_student' %}">العودة للوحة الإدارة</a>
+                    {% else %}
+                        <a class="button secondary" href="{% url 'home' %}">العودة لتسجيل الدخول</a>
+                    {% endif %}
+                    <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
+                </div>
+            </header>
+
+            <section class="contact-panel" aria-labelledby="contact-title">
+                <div class="contact-panel-header">
+                    <h2 class="contact-panel-title" id="contact-title">معلومات التواصل</h2>
+                    <p class="contact-panel-note">يمكنك التواصل عبر تيليغرام للرد السريع، أو إرسال رسالة بريد إلكتروني بالتفاصيل.</p>
+                </div>
+
+                <div class="contact-method-grid">
+                    <a class="contact-method" href="https://t.me/Bjawish" target="_blank" rel="noopener noreferrer">
+                        <span class="contact-method-icon telegram-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M21.7 3.3 2.9 10.6c-1.3.5-1.3 1.2-.2 1.5l4.8 1.5 1.8 5.5c.2.6.1.9.8.9.5 0 .8-.2 1.1-.5l2.6-2.5 5.4 4c1 .6 1.7.3 2-.9l3.5-16.4c.4-1.4-.5-2-1.8-1.5Zm-12 9.9 9.4-6c.5-.3 1-.1.6.2l-7.7 7-0.3 3.2-2-4.4Z"/>
+                            </svg>
+                        </span>
+                        <span class="contact-method-content">
+                            <span class="contact-method-title">تيليغرام</span>
+                            <span class="contact-method-value">@Bjawish</span>
+                            <span class="contact-method-action">فتح تيليغرام</span>
+                        </span>
+                    </a>
+
+                    <a class="contact-method" href="mailto:baraaj2009@gmail.com">
+                        <span class="contact-method-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M4.5 6.5h15c.8 0 1.5.7 1.5 1.5v8c0 .8-.7 1.5-1.5 1.5h-15c-.8 0-1.5-.7-1.5-1.5V8c0-.8.7-1.5 1.5-1.5Zm.7 2 6.8 4.7 6.8-4.7H5.2Zm13.8 7V10.2l-6.2 4.3c-.5.3-1.1.3-1.6 0L5 10.2v5.3h14Z"/>
+                            </svg>
+                        </span>
+                        <span class="contact-method-content">
+                            <span class="contact-method-title">البريد الإلكتروني</span>
+                            <span class="contact-method-value">baraaj2009@gmail.com</span>
+                            <span class="contact-method-action">إرسال بريد</span>
+                        </span>
+                    </a>
+                </div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

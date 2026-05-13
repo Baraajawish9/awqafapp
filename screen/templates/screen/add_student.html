@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>إدارة الطلاب</title>
     <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
-    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=theme-2">
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=contact-page-1">
     <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body>
@@ -20,6 +20,7 @@
                 <a class="nav-link" href="{% url 'add_student' %}">إدارة الطلاب</a>
                 <a class="nav-link" href="{% url 'public_screen' %}">الشاشة العامة</a>
                 <a class="nav-link" href="{% url 'edit_settings' %}">الإعدادات</a>
+                <a class="nav-link" href="{% url 'contact' %}">تواصل معنا</a>
                 <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false"><span data-theme-icon aria-hidden="true">&#9790;</span></button>
                 <form class="logout-form" method="post" action="{% url 'logout' %}">
                     {% csrf_token %}

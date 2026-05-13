@@ -13,6 +13,7 @@ urlpatterns = [
     path('dashboard/', screen_views.add_student, name='add_student'),
     path('display/', screen_views.public_screen, name='public_screen'),
     path('settings/', screen_views.edit_settings, name='edit_settings'),
+    path('contact/', screen_views.contact, name='contact'),
 
     # Student and exam operations
     path('students/import/', upload_excel, name='upload_excel'),

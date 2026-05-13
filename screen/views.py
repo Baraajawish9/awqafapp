@@ -39,6 +39,10 @@ VISIBLE_STUDENTS_PER_TV_ROOM = 7
 STUDENT_SLICE_ROTATE_MS = 5000
 
 
+def contact(request):
+    return render(request, 'screen/contact.html')
+
+
 def get_tv_layout(room_count):
     if room_count <= 6:
         return {

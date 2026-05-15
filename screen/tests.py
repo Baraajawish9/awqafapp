@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.http import HttpResponse
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
 from django.utils.timezone import get_current_timezone, make_aware
@@ -186,7 +187,108 @@ class ScreenSettingsRoomUserTests(TestCase):
 
 
 class PublicScreenModeTests(TestCase):
-    def test_rooms_mode_adds_recent_finished_results_as_extra_group(self):
+    def test_rooms_mode_renders_finished_results_page(self):
+        student = Student.objects.create(name='Rendered Finished Student', room='1', status='finished')
+        result = ExamResult.objects.create(
+            number=student.number,
+            name=student.name,
+            grade=91,
+            result='ناجح',
+            room=1,
+            sub_room='0',
+        )
+        result.student_name = student.name
+        result.result_class = 'success'
+        result.display_result = 'ناجح'
+        result.display_grade = '91'
+
+        html = render_to_string('screen/public_screen.html', {
+            'screen_mode': 'rooms',
+            'room_pages': [],
+            'room_page_count': 0,
+            'screen_page_count': 1,
+            'finished_results': [result],
+            'finished_results_page_size': 24,
+            'rotate_interval_ms': 1200,
+            'student_slice_rotate_ms': 4500,
+            'visible_students_per_room': 7,
+            'tv_density_class': 'tv-density-6 tv-grid-3x2',
+            'exam_start_minutes': 420,
+            'estimate_minutes': 5,
+        })
+
+        self.assertIn('الطلاب المنتهون', html)
+        self.assertIn('Rendered Finished Student', html)
+        self.assertIn('ناجح', html)
+        self.assertIn('إعادة', html)
+
+    def test_rooms_mode_adds_capped_finished_results_page(self):
+        user = User.objects.create_user(username='screen-finished-page-admin', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(
+            room_count=1,
+            waiting_count=5,
+            estimate_time_per_student=5,
+            exam_start_time=time(8, 0),
+            public_screen_mode='rooms',
+        )
+
+        for index in range(26):
+            student = Student.objects.create(
+                name=f'Finished Page Student {index + 1}',
+                room='1',
+                status='finished',
+                position=index,
+            )
+            result = 'ناجح' if index == 25 else 'إعادة'
+            ExamResult.objects.create(
+                number=student.number,
+                name=student.name,
+                grade=95 if result == 'ناجح' else 70,
+                result=result,
+                room=1,
+                sub_room='0',
+            )
+
+        captured = {}
+
+        def capture_render(request, template_name, context):
+            captured.update(context)
+            return HttpResponse('ok')
+
+        self.client.force_login(user)
+        with patch('screen.views.render', side_effect=capture_render):
+            response = self.client.get(reverse('public_screen'))
+
+        finished_results = captured['finished_results']
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['screen_page_count'], captured['room_page_count'] + 1)
+        self.assertEqual(len(finished_results), 24)
+        self.assertEqual(finished_results[0].student_name, 'Finished Page Student 26')
+        self.assertEqual(finished_results[0].result_class, 'success')
+        self.assertEqual(finished_results[0].display_result, 'ناجح')
+        self.assertEqual(finished_results[-1].student_name, 'Finished Page Student 3')
+        self.assertNotIn('Finished Page Student 1', [result.student_name for result in finished_results])
+
+    def test_rooms_mode_does_not_add_finished_page_when_empty(self):
+        user = User.objects.create_user(username='screen-no-finished-page-admin', password='12345678', is_staff=True)
+        ScreenSettings.objects.create(room_count=1, waiting_count=5, public_screen_mode='rooms')
+        Student.objects.create(name='Waiting Only Student', room='1', status='waiting')
+        captured = {}
+
+        def capture_render(request, template_name, context):
+            captured.update(context)
+            return HttpResponse('ok')
+
+        self.client.force_login(user)
+        with patch('screen.views.render', side_effect=capture_render):
+            response = self.client.get(reverse('public_screen'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['finished_results'], [])
+        self.assertEqual(captured['screen_page_count'], captured['room_page_count'])
+
+    def test_rooms_mode_keeps_finished_results_off_room_pages(self):
         user = User.objects.create_user(username='screen-results-admin', password='12345678', is_staff=True)
         ScreenSettings.objects.create(
             room_count=1,
@@ -238,19 +340,22 @@ class PublicScreenModeTests(TestCase):
         room_students = captured['room_pages'][0]['rooms'][0]['students']
         room_card = captured['room_pages'][0]['rooms'][0]
         waiting = next(student for student in room_students if student.number == waiting_student.number)
-        result_names = [student.name for student in room_students if getattr(student, 'status', '') == 'finished']
-        retry = next(student for student in room_students if student.number == retry_student.number)
+        room_result_names = [student.name for student in room_students if getattr(student, 'status', '') == 'finished']
+        finished_result_names = [result.student_name for result in captured['finished_results']]
+        retry = next(result for result in captured['finished_results'] if result.number == retry_student.number)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(finished_student.name, result_names)
-        self.assertIn(retry_student.name, result_names)
-        self.assertNotIn(expired_student.name, result_names)
+        self.assertEqual(room_result_names, [])
+        self.assertIn(finished_student.name, finished_result_names)
+        self.assertIn(retry_student.name, finished_result_names)
+        self.assertIn(expired_student.name, finished_result_names)
         self.assertEqual(room_card['active_count'], 1)
-        self.assertEqual(room_card['result_count'], 2)
-        self.assertEqual(room_card['total_count'], 3)
+        self.assertEqual(room_card['result_count'], 0)
+        self.assertEqual(room_card['total_count'], 1)
         self.assertEqual(retry_result.result, 'إعادة')
-        self.assertEqual(retry.latest_result_class, 'retry')
+        self.assertEqual(retry.result_class, 'retry')
         self.assertEqual(captured['room_page_count'], 1)
+        self.assertEqual(captured['screen_page_count'], 2)
         self.assertEqual(waiting.estimated_time, '8:00 AM')
 
     def test_window_mode_shows_students_in_next_15_minutes(self):

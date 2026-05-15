@@ -37,6 +37,8 @@ STATUS_PRIORITY = {
 ROOMS_PER_SCREEN_PAGE = 12
 VISIBLE_STUDENTS_PER_TV_ROOM = 7
 STUDENT_SLICE_ROTATE_MS = 5000
+FINISHED_RESULTS_PAGE_SIZE = 24
+SUCCESS_RESULTS = {'ناجح', 'ظ†ط§ط¬ط­'}
 
 
 def contact(request):
@@ -162,6 +164,25 @@ def is_current_student_for_room(student):
 
 def chunked(items, chunk_size):
     return [items[index:index + chunk_size] for index in range(0, len(items), chunk_size)]
+
+
+def is_success_result(result):
+    return str(result or '').strip() in SUCCESS_RESULTS
+
+
+def get_result_class(result):
+    return 'success' if is_success_result(result) else 'retry'
+
+
+def get_result_label(result):
+    return 'ناجح' if is_success_result(result) else 'إعادة'
+
+
+def format_grade(grade):
+    try:
+        return f"{float(grade):g}"
+    except (TypeError, ValueError):
+        return ''
 
 
 def normalize_time_value(value, fallback=None):
@@ -354,7 +375,7 @@ def public_screen(request):
         result = latest_results.get(student.number)
         student.latest_grade = result['grade'] if result else None
         student.latest_result = result['result'] if result else None
-        student.latest_result_class = 'success' if student.latest_result == 'ناجح' else 'retry'
+        student.latest_result_class = get_result_class(student.latest_result)
         student.room_number = parse_room_number(student.room)
 
     students_by_room = defaultdict(list)
@@ -385,7 +406,7 @@ def public_screen(request):
         result.status = 'finished'
         result.latest_grade = result.grade
         result.latest_result = result.result
-        result.result_class = 'success' if result.result == 'ناجح' else 'retry'
+        result.result_class = get_result_class(result.result)
         result.latest_result_class = result.result_class
         result.estimated_time = None
         result.scheduled_time = 'نتيجة'
@@ -455,38 +476,17 @@ def public_screen(request):
             scheduled_time = exam_start_time + timedelta(minutes=idx * estimate_minutes)
             student.estimated_time = scheduled_time.strftime("%I:%M %p").lstrip("0")
 
-    result_cutoff = timezone_now() - timedelta(seconds=result_display_seconds)
-    recent_finished_by_room = defaultdict(list)
-    seen_finished_numbers = set()
-    for result in ExamResult.objects.filter(sub_room='0', room__in=rooms, timestamp__gte=result_cutoff).order_by('-timestamp', '-id'):
-        student = students_by_number.get(result.number)
-        if not student or student.status != 'finished' or result.number in seen_finished_numbers:
-            continue
-        seen_finished_numbers.add(result.number)
-        result.room_number = parse_room_number(student.room) or result.room
-        if result.room_number not in rooms:
-            continue
-        result.status = 'finished'
-        result.latest_grade = result.grade
-        result.latest_result = result.result
-        result.result_class = 'success' if result.result == 'ناجح' else 'retry'
-        result.latest_result_class = result.result_class
-        result.estimated_time = None
-        recent_finished_by_room[result.room_number].append(result)
-
     room_cards = []
     for room in rooms:
         room_students = students_by_room.get(room, [])
-        result_students = recent_finished_by_room.get(room, [])
-        display_students = room_students + result_students
         status_counts = Counter(student.status for student in room_students)
 
         room_cards.append({
             'number': room,
-            'students': display_students,
-            'total_count': len(display_students),
+            'students': room_students,
+            'total_count': len(room_students),
             'active_count': len(room_students),
-            'result_count': len(result_students),
+            'result_count': 0,
             'current_student': next((s for s in room_students if s.status == 'in_exam'), None),
             'waiting_count': status_counts.get('waiting', 0) + status_counts.get('on_waiting_list', 0),
             'late_count': status_counts.get('late', 0),
@@ -501,10 +501,39 @@ def public_screen(request):
         for index, page_rooms in enumerate(chunked(room_cards, tv_layout['rooms_per_page']))
     ]
 
+    finished_results = []
+    seen_finished_page_numbers = set()
+    for result in results.order_by('-timestamp', '-id'):
+        student = students_by_number.get(result.number)
+        if (
+            not student
+            or student.status != 'finished'
+            or result.number in seen_finished_page_numbers
+        ):
+            continue
+
+        room_number = parse_room_number(student.room) or result.room
+        if room_number not in rooms:
+            continue
+
+        seen_finished_page_numbers.add(result.number)
+        result.room_number = room_number
+        result.student_name = student.name or result.name
+        result.result_class = get_result_class(result.result)
+        result.display_result = get_result_label(result.result)
+        result.display_grade = format_grade(result.grade)
+        finished_results.append(result)
+
+        if len(finished_results) >= FINISHED_RESULTS_PAGE_SIZE:
+            break
+
     return render(request, 'screen/public_screen.html', {
         'screen_mode': 'rooms',
         'room_pages': room_pages,
         'room_page_count': len(room_pages),
+        'screen_page_count': len(room_pages) + (1 if finished_results else 0),
+        'finished_results': finished_results,
+        'finished_results_page_size': FINISHED_RESULTS_PAGE_SIZE,
         'rotate_interval_ms': 1200,
         'student_slice_rotate_ms': tv_layout['student_rotate_ms'],
         'visible_students_per_room': tv_layout['visible_students'],

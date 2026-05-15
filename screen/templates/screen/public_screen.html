@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>الشاشة العامة</title>
     <script>(function(){try{var s=document.documentElement.dataset.themeScope||'global';var t=localStorage.getItem('awqaf-theme:'+s);if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}})();</script>
-    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=contact-page-1">
+    <link rel="stylesheet" href="{% static 'screen/ui.css' %}?v=finished-results-ar-2">
     <script defer src="{% static 'screen/theme.js' %}?v=theme-2"></script>
 </head>
 <body class="tv-body">
@@ -164,7 +164,7 @@
                 <span>صفحة</span>
                 <span id="currentPage">1</span>
                 <span>/</span>
-                <span id="totalPages">{{ room_page_count }}</span>
+                <span id="totalPages">{{ screen_page_count|default:room_page_count }}</span>
                 <span class="tv-page-set" id="currentSet"></span>
                 <span class="tv-time-range" id="currentTimeRange"></span>
             </div>
@@ -172,6 +172,24 @@
         </header>
 
         <section class="tv-pages" id="tvPages">
+            <style>
+                .tv-legend:not(.tv-results-legend) .tv-result-success,
+                .tv-legend:not(.tv-results-legend) .tv-result-retry {
+                    display: none !important;
+                }
+
+                body:has(.tv-page-finished.is-active) > .tv-legend {
+                    display: none !important;
+                }
+
+                .tv-page-result-legend {
+                    display: none !important;
+                }
+
+                .tv-page-finished.is-active .tv-page-result-legend {
+                    display: grid !important;
+                }
+            </style>
             {% for page in room_pages %}
                 <div class="tv-page {% if forloop.first %}is-active{% endif %}" data-page="{{ forloop.counter }}">
                     <div class="tv-grid">
@@ -213,15 +231,42 @@
                     </div>
                 </div>
             {% endfor %}
+            {% if finished_results %}
+            <div class="tv-page tv-page-finished {% if not room_pages %}is-active{% endif %}" data-page="{{ room_page_count|add:1 }}" data-page-type="finished">
+                <section class="tv-finished-page" aria-label="الطلاب المنتهون">
+                    <header class="tv-finished-header">
+                        <span>الطلاب المنتهون</span>
+                        <span class="tv-finished-count">{{ finished_results|length }}/{{ finished_results_page_size }}</span>
+                    </header>
+                    <div class="tv-finished-list">
+                        {% for result in finished_results %}
+                            <article class="tv-finished-item tv-result-{{ result.result_class }}">
+                                <span class="tv-finished-name">{{ result.number }} - {{ result.student_name }}</span>
+                                <span class="tv-finished-grade">{{ result.display_grade }}</span>
+                                <span class="tv-finished-result">{{ result.display_result }}</span>
+                            </article>
+                        {% endfor %}
+                    </div>
+                    <footer class="tv-legend tv-results-legend tv-page-result-legend" aria-label="دليل النتائج">
+                        <div class="tv-legend-item tv-result-success">ناجح</div>
+                        <div class="tv-legend-item tv-result-retry">إعادة</div>
+                    </footer>
+                </section>
+            </div>
+            {% endif %}
         </section>
     </main>
 
-    <footer class="tv-legend" aria-label="دليل الحالات">
+    <footer class="tv-legend tv-status-legend" id="tvStatusLegend" aria-label="دليل الحالات">
         <div class="tv-legend-item tv-student status-in_exam">في الاختبار</div>
         <div class="tv-legend-item tv-student status-waiting">انتظار</div>
         <div class="tv-legend-item tv-student status-on_waiting_list">قائمة الانتظار</div>
         <div class="tv-legend-item tv-student status-late">متأخر</div>
         <div class="tv-legend-item tv-student status-finished">منتهي</div>
+    </footer>
+    <footer class="tv-legend tv-results-legend" id="tvResultsLegend" aria-label="دليل النتائج" hidden style="display: none;">
+        <div class="tv-legend-item tv-result-success">ناجح</div>
+        <div class="tv-legend-item tv-result-retry">إعادة</div>
     </footer>
 
     <script>
@@ -232,6 +277,8 @@
             const totalPages = document.getElementById('totalPages');
             const currentSet = document.getElementById('currentSet');
             const currentTimeRange = document.getElementById('currentTimeRange');
+            const statusLegend = document.getElementById('tvStatusLegend');
+            const resultsLegend = document.getElementById('tvResultsLegend');
             const pageRotateMs = parseInt(stage.dataset.pageRotateMs || '1200', 10);
             const studentRotateMs = parseInt(stage.dataset.studentRotateMs || '5000', 10);
             let fallbackVisibleStudents = parseInt(stage.dataset.visibleStudents || '7', 10);
@@ -307,10 +354,8 @@
 
             function getListMaxSlices(list, visibleStudents) {
                 const activeTotal = parseInt(list.dataset.activeTotal || list.dataset.total || '0', 10);
-                const resultTotal = parseInt(list.dataset.resultTotal || '0', 10);
                 const activeSlices = activeTotal > 0 ? Math.min(maxStudentGroups, Math.ceil(activeTotal / visibleStudents)) : 0;
-                const resultSlices = resultTotal > 0 ? Math.ceil(resultTotal / visibleStudents) : 0;
-                return Math.max(1, activeSlices + resultSlices);
+                return Math.max(1, activeSlices);
             }
 
             function getMaxSlices(page, visibleStudents) {
@@ -321,26 +366,36 @@
             }
 
             function updateRoomSlices(page, nextSliceIndex) {
+                const isFinishedPage = page.dataset.pageType === 'finished';
+                if (statusLegend) {
+                    statusLegend.hidden = isFinishedPage;
+                    statusLegend.style.display = isFinishedPage ? 'none' : '';
+                }
+                if (resultsLegend) {
+                    resultsLegend.hidden = !isFinishedPage;
+                    resultsLegend.style.display = isFinishedPage ? '' : 'none';
+                }
+
+                if (isFinishedPage) {
+                    if (currentSet) currentSet.textContent = '';
+                    if (currentTimeRange) currentTimeRange.textContent = 'النتائج';
+                    sliceIndex = 0;
+                    return;
+                }
+
                 const visibleStudents = getVisibleStudentCount(page);
                 const maxSlices = getMaxSlices(page, visibleStudents);
                 const safeSliceIndex = nextSliceIndex % maxSlices;
-                let showingResults = false;
-
                 page.querySelectorAll('.tv-compact-list').forEach(function (list) {
                     const students = Array.from(list.querySelectorAll('.tv-compact-student'));
                     const activeTotal = parseInt(list.dataset.activeTotal || list.dataset.total || '0', 10);
-                    const resultTotal = parseInt(list.dataset.resultTotal || '0', 10);
                     const activeSlices = activeTotal > 0 ? Math.min(maxStudentGroups, Math.ceil(activeTotal / visibleStudents)) : 0;
                     let start = safeSliceIndex * visibleStudents;
                     let end = start + visibleStudents;
 
                     if (safeSliceIndex >= activeSlices) {
-                        const resultSliceIndex = safeSliceIndex - activeSlices;
-                        start = activeTotal + resultSliceIndex * visibleStudents;
-                        end = start + visibleStudents;
-                        if (resultTotal > 0 && start < activeTotal + resultTotal) {
-                            showingResults = true;
-                        }
+                        start = activeTotal;
+                        end = activeTotal;
                     }
 
                     students.forEach(function (student, studentIndex) {
@@ -350,16 +405,12 @@
 
                 currentSet.textContent = maxSlices > 1 ? 'مجموعة ' + (safeSliceIndex + 1) + '/' + maxSlices : '';
                 if (currentTimeRange) {
-                    if (showingResults) {
-                        currentTimeRange.textContent = 'نتائج';
-                    } else {
-                        const largestTotal = getLargestStudentTotal(page);
-                        const activeSlices = Math.min(maxStudentGroups, Math.max(1, Math.ceil(largestTotal / visibleStudents)));
-                        const displayTotal = largestTotal ? Math.min(largestTotal, visibleStudents * activeSlices) : visibleStudents * activeSlices;
-                        const rangeStart = examStartMinutes;
-                        const rangeEnd = examStartMinutes + displayTotal * estimateMinutes;
-                        currentTimeRange.textContent = formatRange(rangeStart, rangeEnd);
-                    }
+                    const largestTotal = getLargestStudentTotal(page);
+                    const activeSlices = Math.min(maxStudentGroups, Math.max(1, Math.ceil(largestTotal / visibleStudents)));
+                    const displayTotal = largestTotal ? Math.min(largestTotal, visibleStudents * activeSlices) : visibleStudents * activeSlices;
+                    const rangeStart = examStartMinutes;
+                    const rangeEnd = examStartMinutes + displayTotal * estimateMinutes;
+                    currentTimeRange.textContent = formatRange(rangeStart, rangeEnd);
                 }
                 sliceIndex = safeSliceIndex;
             }
@@ -389,6 +440,8 @@
                         const doc = new DOMParser().parseFromString(html, 'text/html');
                         const nextPages = doc.getElementById('tvPages');
                         if (!nextPages) return;
+                        const nextStatusLegend = doc.getElementById('tvStatusLegend');
+                        const nextResultsLegend = doc.getElementById('tvResultsLegend');
 
                         const nextStage = doc.querySelector('.tv-stage');
                         if (nextStage) {
@@ -402,6 +455,12 @@
                         }
 
                         pagesContainer.innerHTML = nextPages.innerHTML;
+                        if (nextStatusLegend && statusLegend) {
+                            statusLegend.innerHTML = nextStatusLegend.innerHTML;
+                        }
+                        if (nextResultsLegend && resultsLegend) {
+                            resultsLegend.innerHTML = nextResultsLegend.innerHTML;
+                        }
                         pages = Array.from(pagesContainer.querySelectorAll('.tv-page'));
                         pageIndex = 0;
                         sliceIndex = 0;

@@ -348,7 +348,7 @@ class PublicScreenModeTests(TestCase):
         self.assertEqual(room_result_names, [])
         self.assertIn(finished_student.name, finished_result_names)
         self.assertIn(retry_student.name, finished_result_names)
-        self.assertIn(expired_student.name, finished_result_names)
+        self.assertNotIn(expired_student.name, finished_result_names)
         self.assertEqual(room_card['active_count'], 1)
         self.assertEqual(room_card['result_count'], 0)
         self.assertEqual(room_card['total_count'], 1)

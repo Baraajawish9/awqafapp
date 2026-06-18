@@ -1,0 +1,44 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*$py.class
+
+# Virtual environment
+myvenv/
+venv/
+env/
+.venv/
+
+# Django database
+db.sqlite3
+
+# Log files
+*.log
+*.err.log
+*.out.log
+grades_log.csv
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temp / testing
+tmps65j4qyi/
+.pytest_cache/
+
+# Zip/rar archives
+*.zip
+*.rar
+
+# Environment files
+.env
+.env.*

@@ -355,6 +355,8 @@ def public_screen(request):
     students = list(Student.objects.all().order_by('room', 'position', 'number'))
     students_by_number = {student.number: student for student in students}
 
+    result_cutoff = timezone_now() - timedelta(seconds=result_display_seconds)
+
     latest_ids = (
         ExamResult.objects
         .filter(sub_room='0')
@@ -362,7 +364,7 @@ def public_screen(request):
         .annotate(latest_id=Max('id'))
         .values_list('latest_id', flat=True)
     )
-    results = ExamResult.objects.filter(id__in=latest_ids)
+    results = ExamResult.objects.filter(id__in=latest_ids, timestamp__gte=result_cutoff)
     latest_results = {
         res.number: {
             'grade': res.grade,
@@ -392,7 +394,6 @@ def public_screen(request):
     tz = get_current_timezone()
     exam_start_time = localtime(make_aware(naive_start_datetime, timezone=tz))
 
-    result_cutoff = timezone_now() - timedelta(seconds=result_display_seconds)
     recent_finished_by_room = defaultdict(list)
     seen_finished_numbers = set()
     for result in ExamResult.objects.filter(sub_room='0', room__in=rooms, timestamp__gte=result_cutoff).order_by('-timestamp', '-id'):
